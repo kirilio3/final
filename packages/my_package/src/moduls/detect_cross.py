@@ -13,7 +13,9 @@ import cv2
 import numpy as np
 from cv_bridge import CvBridge
 from dt_apriltags import Detector
-from packages.my_package.src.moduls.mother_of_all import MotherOfAll as MOA
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from mother_of_all import MotherOfAll as MOA
 
 
 class Detect_Corss(MOA):
@@ -57,6 +59,11 @@ class Detect_Corss(MOA):
 
         self.duck_color_lower = np.array([14, 100, 175], np.uint8)
         self.duck_color_upper = np.array([19, 210, 255], np.uint8)
+
+        self.red_lower1 = np.array([0, 150, 50], np.uint8)   # Lower bound for red
+        self.red_upper1 = np.array([10, 255, 255], np.uint8) # Upper bound for red
+        self.red_lower2 = np.array([170, 150, 50], np.uint8) # Second lower bound for red
+        self.red_upper2 = np.array([180, 255, 255], np.uint8) # Second upper bound for red
     
         self.has_pedestrian = False
 
@@ -87,7 +94,7 @@ class Detect_Corss(MOA):
         # Detect lanes and mark centers on the cropped image
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
         if self.cross_or_red == "red":
-            image,reached = self.detect_red_cross(cropped_image)
+            self.detect_red_cross(cropped_image)
         else:
             image = self.detect_corss(cropped_image)
         # image = self.detect_pedestrian(cropped_image)
@@ -260,10 +267,12 @@ class Detect_Corss(MOA):
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
                     if distance < 0.1:  # Stop if red line is close (adjust threshold as needed)
-                        self.red_line_reached = True
-                        self.corss_line_detect_pub.publish(Float64(1))
-                        rospy.loginfo("Red line detected, stopping the robot.")
-                        return image, True
+                        self.red_cross_line_detect_pub.publish(Float64(1))
+                        # rospy.loginfo("Red line detected, stopping the robot.")
+                        # return image
+        else:
+            self.red_cross_line_detect_pub.publish(Float64(0))
+            # return image
 
     def reached_corss_getter(self):
         return self.detect_corss_reached

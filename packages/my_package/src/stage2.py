@@ -12,16 +12,15 @@ import sys
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
-from dt_apriltags import Detector
-import packages.my_package.src.moduls.lane_following as lf
-import packages.my_package.src.moduls.detect_cross as dc
-import packages.my_package.src.moduls.detect_apriltag as da
+import moduls.lane_following as lf
+import moduls.detect_cross as dc
+import moduls.detect_apriltag as da
 import time
 import signal
 
 class Stage2():
 
-    def __init__(self, vehicle_name):
+    def __init__(self, vehicle_name,ID1,ID2):
 
         self.vehicle_name = vehicle_name
 
@@ -30,7 +29,8 @@ class Stage2():
         self.camera_matrix = None
         self.distortion_coeffs = None
 
-
+        self.ID1 = ID1
+        self.ID2 = ID2
         ##############following functiinalities are added#####################
         self.LF = lf.Lane_Following(self.vehicle_name)
         self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False)
@@ -41,6 +41,7 @@ class Stage2():
         
         # Publishers
         self.image_pub = rospy.Publisher(f"/{self.vehicle_name}/camera_node/image/distorted_image/compressed", CompressedImage, queue_size=10)
+        self.red_cross_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/red_cross_line_detect", Float64, queue_size=1)
         
         # Subscribers
 
@@ -49,29 +50,52 @@ class Stage2():
 
         # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
         self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
-        signal.signal(signal.SIGINT, self.signal_handler)
 
     '''
-        please set camera info here for every camera related node
+        please set camera info here for every camera related node 
     '''
     def cb_camera_info(self, msg):
         self.camera_matrix = np.array(msg.K).reshape(3, 3)
         self.distortion_coeffs = np.array(msg.D)
-        # self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        # self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+        self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+        self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
         self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
 
 
-
-    
+    def stop(self):
+        self.LF.stop()
     
 
     def run_stage2(self):
         rospy.sleep(1)
         rate = 20
+
+        while True:  
+            while not rospy.is_shutdown(): 
+                self.LF.lane_follow(10,rate)
+                try:
+                    red_detected = rospy.wait_for_message(f"/{self.vehicle_name}/red_cross_line_detect",Float64, timeout=1).data
+                except rospy.ROSException:
+                    red_detected = False
+                if red_detected:
+                    rospy.loginfo("Red cross line detected")
+                    rospy.sleep(1)
+                    self.LF.stop()
+                    break
+            tagID = self.DA.get_tag_id()
+            rospy.loginfo(f"Tag ID: {tagID}")
+            if tagID is not None:
+                if tagID == self.ID1:
+                    rospy.loginfo(f"Tag ID {tagID} detected")
+                    self.LF.turn_left_90_degree_arc()
+                elif tagID == self.ID2:
+                    rospy.loginfo(f"Tag ID {tagID} detected")
+                    self.LF.turn_right_90_degree_arc()
+                    rospy.sleep(2)
+                    break
+        self.LF.stop()
         #rospy.spin()
-        id = self.DA.get_tag_id()
-        rospy.loginfo(f"Detected AprilTag ID: {id}")
+
         # done = self.LF.lane_follow(10,rate)
 
 

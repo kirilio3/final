@@ -13,17 +13,21 @@ import cv2
 import numpy as np
 from cv_bridge import CvBridge
 from dt_apriltags import Detector
-from mother_of_all import MotherOfAll
+
 import time
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from mother_of_all import MotherOfAll as MOA
 
 
-
-class Lane_Following(MotherOfAll):
+class Lane_Following(MOA):
     
     def __init__(self, vehicle_name, distortion_coeffs=None, camera_matrix=None):
         self.vehicle_name = vehicle_name
         
+
+
         # Lane detection variables
         self.bridge = CvBridge()
         self.camera_matrix = camera_matrix
@@ -40,12 +44,12 @@ class Lane_Following(MotherOfAll):
         self.WHEEL_RADIUS = 0.0318
         self.WHEEL_CIRC = 2.0 * math.pi * self.WHEEL_RADIUS
         self.BASELINE = 0.077
-        self.VELOCITY = 0.2
+        self.VELOCITY = 0.25
         self.OMEGA_SPEED = 2.5
         self.angular_vel = 2.6
         
         # Control parameters
-        self.KP = 0.015  # Proportional gain
+        self.KP = 0.02  # Proportional gain
         self.KI = 0.0001  # Integral gain
         self.KD = 0.01    # Derivative gain
         self.TARGET_DISTANCE = 20  # meters
@@ -58,8 +62,6 @@ class Lane_Following(MotherOfAll):
         # Publishers
         twist_topic = f"/{self.vehicle_name}/car_cmd_switch_node/cmd"
         self.pub_cmd = rospy.Publisher(twist_topic, Twist2DStamped, queue_size=1)
-
-        
         self.yellow_lane_pub = rospy.Publisher(f"/{self.vehicle_name}/yellow_lane", Float64, queue_size=1)
         self.white_lane_pub = rospy.Publisher(f"/{self.vehicle_name}/white_lane", Float64, queue_size=1)
         self.corss_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/corss_line_detect", Float64, queue_size=1)
@@ -224,8 +226,10 @@ class Lane_Following(MotherOfAll):
         self._right_distance_traveled += distance
     
     def stop(self):
+        rospy.loginfo("Stopping vehicle...")
         msg = Twist2DStamped(v=0.0, omega=0.0)
         self.pub_cmd.publish(msg)
+        rospy.sleep(2)
 
 
     def pid_control(self,error):
@@ -244,74 +248,75 @@ class Lane_Following(MotherOfAll):
     def lane_follow(self, distance,rate=20):
         # while (True):
         #     pass
-        rospy.loginfo("Starting lane following for {distance} meters with PID control...")
+        # rospy.loginfo("Starting lane following for {distance} meters with PID control...")
         
         rate = rospy.Rate(rate)  # 20 Hz
         self.prev_time = rospy.get_time()
         
         # while not rospy.is_shutdown():
         avg_distance = (self._left_distance_traveled + self._right_distance_traveled) / 2
- 
-        while not rospy.is_shutdown(): 
-            try:
-                detected = rospy.wait_for_message(f"{self.vehicle_name}/corss_line_detect",Float64,timeout=1.0)
-                # rospy.loginfo(f"Cross line detected: {detected.data}")
-                if detected.data:
-                    raise self.getStopException("Cross line detected")  
-                if avg_distance >= distance:
-                    self.stop()
-                    rospy.loginfo("Target distance reached!")
-                    return True
 
-                try:
-                    yellow_msg = rospy.wait_for_message(f"/{self.vehicle_name}/yellow_lane", Float64, timeout=1.0)
-                    white_msg = rospy.wait_for_message(f"/{self.vehicle_name}/white_lane", Float64, timeout=1.0)
-                    # yellow_value, white_value = self.update_lane_centers(yellow_msg.data, white_msg.data)
-                    # print(yellow_value, white_value)
-                except rospy.ROSException as e:
-                    rospy.logwarn(f"Failed to get lane messages: {e}")
-                    yellow_msg = None
-                    white_msg = None
-                
-                
-                if yellow_msg is not None and white_msg is not None:
-                    lane_center = (yellow_msg.data + white_msg.data) / 2
-                    image_center = 320  # Assuming 640x480 image
-                    error = image_center - lane_center
-                    self.pid_control(error)
-                else:
-                    # If lanes not detected, go straight slowly
-                    cmd = Twist2DStamped(v=self.VELOCITY/1.5 , omega=self.OMEGA_SPEED*2)
-                    self.pub_cmd.publish(cmd)
-                    rospy.logwarn("Lanes not detected, moving straight slowly")
-                    
-                rate.sleep()
-            except self.getStopException as e:
-                # rospy.loginfo(e)
-                self.stop()
-                # current  = rospy.get_time()
-                # future_time = rospy.get_time()
-                # while current - future_time < 1:
-                #     current = rospy.get_time()
-                # rospy.sleep(1)
-                # if not self.cross_detected % 2:
-                #     self.stop()
-                #     rospy.sleep(1)
-                
-                while True:
-                    try:
-                        pedestrian_detected = rospy.wait_for_message(f"/{self.vehicle_name}/pedestrian_detect",Float64,timeout=5.0)
-                        if not pedestrian_detected.data:
-                            rospy.loginfo(" no1")
-                            break
-                        rospy.loginfo("duck duck")
-                    except:
-                        rospy.loginfo(" waiting ")
-                        # break
-                cmd = Twist2DStamped(v=self.VELOCITY , omega=0)
-                self.pub_cmd.publish(cmd)
-                rospy.sleep(2)
+        # try:
+            # detected = rospy.wait_for_message(f"{self.vehicle_name}/corss_line_detect",Float64,timeout=1.0)
+            # # following = rospy.wait_for_message(f"{self.vehicle_name}/lane_following",Float64,timeout=1.0)
+            # # rospy.loginfo(f"Cross line detected: {detected.data}")
+            # if detected.data:
+            #     raise self.getStopException("Cross line detected")
 
+        if avg_distance >= distance:
+            self.stop()
+            rospy.loginfo("Target distance reached!")
+            return True
+        try:
+            yellow_msg = rospy.wait_for_message(f"/{self.vehicle_name}/yellow_lane", Float64, timeout=1.0)
+            white_msg = rospy.wait_for_message(f"/{self.vehicle_name}/white_lane", Float64, timeout=1.0)
+            # yellow_value, white_value = self.update_lane_centers(yellow_msg.data, white_msg.data)
+            # print(yellow_value, white_value)
+        except rospy.ROSException as e:
+            rospy.logwarn(f"Failed to get lane messages: {e}")
+            yellow_msg = None
+            white_msg = None
+        
+        
+        if yellow_msg is not None and white_msg is not None:
+            lane_center = (yellow_msg.data + white_msg.data) / 2
+            image_center = 320  # Assuming 640x480 image
+            error = image_center - lane_center
+            self.pid_control(error)
+        else:
+            # If lanes not detected, go straight slowly
+            cmd = Twist2DStamped(v=self.VELOCITY/1.5 , omega=self.OMEGA_SPEED*1.5)
+            self.pub_cmd.publish(cmd)
+            rospy.logwarn("Lanes not detected, moving straight slowly")
+            
+        rate.sleep()
+        # except self.getStopException as e:
+        #     # rospy.loginfo(e)
+        #     self.stop()
+            
+        #     while True:
+        #         try:
+        #             pedestrian_detected = rospy.wait_for_message(f"/{self.vehicle_name}/pedestrian_detect",Float64,timeout=5.0)
+        #             if not pedestrian_detected.data:
+        #                 rospy.loginfo(" no1")
+        #                 break
+        #             rospy.loginfo("duck duck")
+        #         except:
+        #             rospy.loginfo(" waiting ")
+        #             # break
+        #     cmd = Twist2DStamped(v=self.VELOCITY , omega=0)
+        #     self.pub_cmd.publish(cmd)
+        #     rospy.sleep(2)
+
+
+    def turn_right_90_degree_arc(self):
+        cmd = Twist2DStamped(v=self.VELOCITY*1.1, omega=-self.angular_vel*1.5)
+        self.pub_cmd.publish(cmd)
+        rospy.sleep(2)
+    def turn_left_90_degree_arc(self):
+        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=self.angular_vel*0.9)
+        self.pub_cmd.publish(cmd)
+        rospy.sleep(2)
     # def stop_with_cond(self, condition:bool, time):
     #     if condition:
     #         self.stop()

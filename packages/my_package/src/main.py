@@ -12,8 +12,8 @@ import sys
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
-from dt_apriltags import Detector
-import 
+
+import stage2 as Stage2
 import time
 import signal
 class main(DTROS):
@@ -29,32 +29,27 @@ class main(DTROS):
 
 
         ##############following stages are added#####################
-        self.LF = lf.Lane_Following(self.vehicle_name)
-        self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=True)
+        self.stage2 = Stage2.Stage2(self.vehicle_name,ID1=50,ID2=48)
 
-        self.distance = 2
         
         
-        # Publishers
-        self.image_pub = rospy.Publisher(f"/{self.vehicle_name}/camera_node/image/distorted_image/compressed", CompressedImage, queue_size=10)
+        # # Publishers
+        # self.image_pub = rospy.Publisher(f"/{self.vehicle_name}/camera_node/image/distorted_image/compressed", CompressedImage, queue_size=10)
         
-        # Subscribers
+        # # Subscribers
 
-        self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
-        self.camera_info_topic = f"/{self.vehicle_name}/camera_node/camera_info"
+        # self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
+        # self.camera_info_topic = f"/{self.vehicle_name}/camera_node/camera_info"
 
-        # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
-        self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
+        # # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
+        # self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
         signal.signal(signal.SIGINT, self.signal_handler)
 
-    '''
-        please set camera info here for every camera related node
-    '''
-    def cb_camera_info(self, msg):
-        self.camera_matrix = np.array(msg.K).reshape(3, 3)
-        self.distortion_coeffs = np.array(msg.D)
-        self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+    # def cb_camera_info(self, msg):
+    #     self.camera_matrix = np.array(msg.K).reshape(3, 3)
+    #     self.distortion_coeffs = np.array(msg.D)
+    #     self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+    #     self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
 
 
 
@@ -65,10 +60,10 @@ class main(DTROS):
         rospy.sleep(1)
         rate = 20
         #rospy.spin()
-        done = self.LF.lane_follow(10,rate)
+        self.stage2.run_stage2()
 
     def on_shutdown(self):
-        self.LF.stop()
+        self.stage2.stop()
         super(main, self).on_shutdown()
         sys.exit(0)
 
