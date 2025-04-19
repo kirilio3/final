@@ -101,12 +101,14 @@ class DetectCorss(MOA):
         cropped_image = undistorted_image[crop_top:crop_bottom, crop_left:crop_right]
         # Detect lanes and mark centers on the cropped image
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
+        print(type)
         if type == self.red:
-            self.detect_red_cross(cropped_image)
+            image1 = self.detect_red_cross(cropped_image)
         elif type == self.cross:
-            image = self.detect_corss(cropped_image)
+            image1 = self.detect_corss(cropped_image)
         # image = self.detect_pedestrian(cropped_image)
-        distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image)
+        # distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image1)
+        distorted_msg = None
         if self.debug: self.debugger(distorted_msg)
 
     # def cb_camera_red_corss(self, msg):
@@ -258,7 +260,6 @@ class DetectCorss(MOA):
 
         # Find contours
         contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
         if contours:
             # Find the largest red object
             largest_contour = max(contours, key=cv2.contourArea)
@@ -267,6 +268,8 @@ class DetectCorss(MOA):
             # Check if the red line is fully in view and significant
             height, width, _ = image.shape
             if y + h < height and x + w < width and x > 0 and y > 0 and cv2.contourArea(largest_contour) > 300:
+                print("y")
+                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 # Calculate distance (simplified version)
                 focal_length = 50  # Adjust based on your camera calibration
                 real_height_meters = 0.1  # Estimated height of the red line
@@ -274,14 +277,15 @@ class DetectCorss(MOA):
 
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
+                    print("y")
                     if distance < 0.2:  # Stop if red line is close (adjust threshold as needed)
                         self.red_cross_line_detect_pub.publish(Float64(1))
                         print("red_detected")
                         # rospy.loginfo("Red line detected, stopping the robot.")
-                        # return image
+                        return image
         else:
             self.red_cross_line_detect_pub.publish(Float64(0))
-            # return image
+            return image
 
     def reached_corss_getter(self):
         return self.detect_corss_reached
