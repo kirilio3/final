@@ -16,6 +16,7 @@ from cv_bridge import CvBridge
 import stage2 as Stage2
 import time
 import signal
+import stage3 as Stage3
 class main(DTROS):
 
     def __init__(self, node_name):
@@ -57,10 +58,12 @@ class main(DTROS):
     
 
     def run(self):
-        rospy.sleep(1)
+        rospy.sleep(2)
         rate = 20
         #rospy.spin()
         self.stage2.run_stage2()
+        rospy.loginfo("Stage 2 completed, now running Stage 3...")
+        self.stage2.run_stage3()
 
     def on_shutdown(self):
         self.stage2.stop()

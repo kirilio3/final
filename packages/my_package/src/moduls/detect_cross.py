@@ -68,8 +68,8 @@ class Detect_Corss(MOA):
         self.has_pedestrian = False
 
 
-    def cross_or_red_setter(self, corss_or_red):
-        self.cross_or_red = corss_or_red
+    def cross_or_red_setter(self, cross_or_red):
+        self.cross_or_red = cross_or_red
 
     def camera_info_setter(self, camera_matrix, distortion_coeffs):
         self.camera_matrix = camera_matrix
@@ -95,7 +95,7 @@ class Detect_Corss(MOA):
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
         if self.cross_or_red == "red":
             self.detect_red_cross(cropped_image)
-        else:
+        elif self.cross_or_red == "cross":
             image = self.detect_corss(cropped_image)
         # image = self.detect_pedestrian(cropped_image)
         distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image)
@@ -171,9 +171,9 @@ class Detect_Corss(MOA):
                     # rospy.loginfo("corss detected, stopping the robot.")
                     if pixel_height > 0:
                         distance = abs((real_height_meters * focal_length) / pixel_height)
-                        rospy.loginfo(distance)
+                        # rospy.loginfo(distance)
                         self.detect_pedestrian(image)
-                        if distance < 0.12:  # If blue shape is close
+                        if distance < 0.3:  # If blue shape is close
                             # self.detect_pedestrian(image)
                             self.detect_corss_reached = True
                             detected = True
@@ -222,10 +222,10 @@ class Detect_Corss(MOA):
                         cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
                         self.has_pedestrian = True
                         self.pedestrian_detect_pub.publish(Float64(1))
-                        rospy.loginfo("yes _ped")
+                        # rospy.loginfo("yes _ped")
                         return image
             self.pedestrian_detect_pub.publish(Float64(0))
-            rospy.loginfo("no_ped")
+            # rospy.loginfo("no_ped")
         else:
 
             self.pedestrian_detect_pub.publish(Float64(0))

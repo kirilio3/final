@@ -96,7 +96,7 @@ class Lane_Following(MOA):
         
         # Crop the image (e.g., lower half of 640x480 image)
         height, width = undistorted_image.shape[:2]
-        crop_top = height // 2  # Start from halfway down (240 for 480 height)
+        crop_top = int(height // 2)  # Start from halfway down (240 for 480 height)
         crop_bottom = height    # Go to the bottom (480)
         crop_left = 0           # Start from the left edge
         crop_right = width      # Go to the right edge (640)
@@ -111,7 +111,7 @@ class Lane_Following(MOA):
             white_pos += crop_left   # Adjust x-coordinate if crop_left != 0
         
         # Publish the processed cropped image
-        undistorted_msg = self.bridge.cv2_to_compressed_imgmsg(processed_image)
+        # undistorted_msg = self.bridge.cv2_to_compressed_imgmsg(processed_image)
         # self.image_pub.publish(undistorted_msg)
         
         # Publish lane detection results
@@ -226,9 +226,10 @@ class Lane_Following(MOA):
         self._right_distance_traveled += distance
     
     def stop(self):
-        rospy.loginfo("Stopping vehicle...")
-        msg = Twist2DStamped(v=0.0, omega=0.0)
-        self.pub_cmd.publish(msg)
+        for i in range(5):
+            rospy.loginfo("Stopping vehicle...")
+            msg = Twist2DStamped(v=0.0, omega=0.0)
+            self.pub_cmd.publish(msg)
         rospy.sleep(2)
 
 
@@ -310,13 +311,23 @@ class Lane_Following(MOA):
 
 
     def turn_right_90_degree_arc(self):
-        cmd = Twist2DStamped(v=self.VELOCITY*1.1, omega=-self.angular_vel*1.5)
+        rospy.loginfo("Turning right 90 degrees...")
+        cmd = Twist2DStamped(v=self.VELOCITY*1.5, omega=-self.angular_vel*2)
+        # for i in range(3):
         self.pub_cmd.publish(cmd)
         rospy.sleep(2)
     def turn_left_90_degree_arc(self):
+        rospy.loginfo("Turning right 90 degrees...")
         cmd = Twist2DStamped(v=self.VELOCITY*2, omega=self.angular_vel*0.9)
+        # for i in range(3):
         self.pub_cmd.publish(cmd)
         rospy.sleep(2)
+    def go_straight_for_half_meters(self):
+        rospy.loginfo("Going straight for 0.5 meters...")
+        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=0)
+        # for i in range(3):
+        self.pub_cmd.publish(cmd)
+        rospy.sleep(1)
     # def stop_with_cond(self, condition:bool, time):
     #     if condition:
     #         self.stop()

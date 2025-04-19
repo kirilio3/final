@@ -17,24 +17,25 @@ import moduls.detect_cross as dc
 import moduls.detect_apriltag as da
 import time
 import signal
+from stage2 import Stage2 as S2
 
-class Stage2():
+class Stage3(S2):
 
     def __init__(self, vehicle_name,ID1,ID2):
-
+        super(Stage3, self).__init__(vehicle_name,ID1,ID2)
         self.vehicle_name = vehicle_name
 
-        self.cross_walk_number =0
+        
         self.bridge = CvBridge()
         self.camera_matrix = None
         self.distortion_coeffs = None
 
-        self.ID1 = ID1
-        self.ID2 = ID2
+        self.cross_walk_number =0
         ##############following functiinalities are added#####################
         self.LF = lf.Lane_Following(self.vehicle_name)
-        self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False)
-        self.DA = da.DetectApriltag(self.vehicle_name)
+        self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False,corss_or_red="cross")
+        # self.DCR = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False,corss_or_red="red")
+        # self.DA = da.DetectApriltag(self.vehicle_name)
 
         self.distance = 10
         
@@ -54,56 +55,21 @@ class Stage2():
     '''
         please set camera info here for every camera related node 
     '''
-    def cb_camera_info(self, msg):
-        self.camera_matrix = np.array(msg.K).reshape(3, 3)
-        self.distortion_coeffs = np.array(msg.D)
-        self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+
 
 
     def stop(self):
         self.LF.stop()
     
 
-    def run_stage2(self):
-        rospy.sleep(1)
-        rate = 20
-
-        while True:  
-            while not rospy.is_shutdown(): 
-                self.LF.lane_follow(10,rate)
-                try:
-                    red_detected = rospy.wait_for_message(f"/{self.vehicle_name}/red_cross_line_detect",Float64, timeout=1).data
-                except rospy.ROSException:
-                    red_detected = False
-                if red_detected:
-                    rospy.loginfo("Red cross line detected")
-                    rospy.sleep(1)
-                    self.LF.stop()
-                    break
-            tagID = self.DA.get_tag_id()
-            rospy.loginfo(f"Tag ID: {tagID}")
-            if tagID is not None:
-                if tagID == self.ID1:
-                    rospy.loginfo(f"Tag ID {tagID} detected")
-                    self.LF.turn_left_90_degree_arc()
-                elif tagID == self.ID2:
-                    rospy.loginfo(f"Tag ID {tagID} detected")
-                    self.LF.turn_right_90_degree_arc()
-                    self.LF.stop()
-                    rospy.sleep(2)
-                    break
-
     def run_stage3(self):
-        self.DC.cross_or_red_setter("cross")
         rospy.sleep(1)
         rate = 20
         end = True
         while end:  
             while not rospy.is_shutdown(): 
-                self.LF.lane_follow(20,rate)
-                if self.cross_walk_number < 2:
+                self.LF.lane_follow(10,rate)
+                if self.cross_walk_number < 3:
                     try:
                         cross_detected = rospy.wait_for_message(f"/{self.vehicle_name}/corss_line_detect",Float64, timeout=1).data
                     except rospy.ROSException:
@@ -111,21 +77,17 @@ class Stage2():
                     if cross_detected:
                         self.cross_walk_number+=1
                         rospy.loginfo("cross line detected")
-                        self.LF.stop()
                         rospy.sleep(1)
+                        self.LF.stop()
                         try:
                             ped_detected = rospy.wait_for_message(f"/{self.vehicle_name}/pedestrian_detect",Float64, timeout=5).data
-                            rospy.loginfo(ped_detected)
                         except rospy.ROSException:
                             ped_detected = True
                         while ped_detected:
                             try:
                                 ped_detected = rospy.wait_for_message(f"/{self.vehicle_name}/pedestrian_detect",Float64, timeout=5).data
-                                print(ped_detected)
                             except rospy.ROSException:
                                 ped_detected = True
-                        print("im here")
-                        self.LF.go_straight_for_half_meters()
                 else:
                     self.DC.cross_or_red_setter(cross_or_red="red")
                     try:
@@ -133,12 +95,16 @@ class Stage2():
                     except rospy.ROSException:
                         red_detected = False
                     if red_detected:
-                        rospy.sleep(1)
                         self.stop()
                         rospy.loginfo("Red cross line detected")
                         end = False
                         break
 
+
+        self.LF.stop()
+        #rospy.spin()
+
+        # done = self.LF.lane_follow(10,rate)
 
 
 
