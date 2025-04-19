@@ -2,11 +2,8 @@
 
 source /environment.sh
 
-# initialize launch file
-dt-launchfile-init
+# initialize the launcher
+roslaunch my_package both_nodes.launch
 
-# launch publisher
-rosrun my_package main.py
-
-# wait for app to end
-dt-launchfile-join
+# wait for both to finish (joins all BG processes)
+dt-launchfile-join 

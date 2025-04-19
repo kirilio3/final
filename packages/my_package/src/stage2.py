@@ -4,7 +4,7 @@ import os
 import math
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from std_msgs.msg import ColorRGBA, Float64
+from std_msgs.msg import ColorRGBA, Float64, Int64
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, LEDPattern
 from sensor_msgs.msg import CompressedImage, CameraInfo
 import signal
@@ -33,8 +33,8 @@ class Stage2():
         self.ID2 = ID2
         ##############following functiinalities are added#####################
         self.LF = lf.Lane_Following(self.vehicle_name)
-        self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False)
-        self.DA = da.DetectApriltag(self.vehicle_name)
+        # self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False)
+        # self.DA = da.DetectApriltag(self.vehicle_name)
 
         self.distance = 10
         
@@ -42,6 +42,8 @@ class Stage2():
         # Publishers
         self.image_pub = rospy.Publisher(f"/{self.vehicle_name}/camera_node/image/distorted_image/compressed", CompressedImage, queue_size=10)
         self.red_cross_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/red_cross_line_detect", Float64, queue_size=1)
+        self.line_type_pub = rospy.Publisher(f"/{self.vehicle_name}/line_type", Float64, queue_size=10)
+        self.tag_id  = rospy.Publisher(f"/{self.vehicle_name}/tag_id", Int64, queue_size=10)
         
         # Subscribers
 
@@ -50,16 +52,17 @@ class Stage2():
 
         # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
         self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
-
+        self.red = 1
+        self.cross = 0
     '''
         please set camera info here for every camera related node 
     '''
     def cb_camera_info(self, msg):
         self.camera_matrix = np.array(msg.K).reshape(3, 3)
         self.distortion_coeffs = np.array(msg.D)
-        self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+        # self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
         self.LF.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+        # self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
 
 
     def stop(self):
@@ -67,6 +70,7 @@ class Stage2():
     
 
     def run_stage2(self):
+        self.line_type_pub.publish(Float64(self.red))
         rospy.sleep(1)
         rate = 20
 
@@ -77,12 +81,17 @@ class Stage2():
                     red_detected = rospy.wait_for_message(f"/{self.vehicle_name}/red_cross_line_detect",Float64, timeout=1).data
                 except rospy.ROSException:
                     red_detected = False
+                print(red_detected)
                 if red_detected:
                     rospy.loginfo("Red cross line detected")
                     rospy.sleep(1)
                     self.LF.stop()
                     break
-            tagID = self.DA.get_tag_id()
+            try: 
+                tagID = rospy.wait_for_message(f"/{self.vehicle_name}/tag_id",Int64, timeout=1).data
+            except:
+                tagID = None
+            print(tagID)
             rospy.loginfo(f"Tag ID: {tagID}")
             if tagID is not None:
                 if tagID == self.ID1:
@@ -96,7 +105,8 @@ class Stage2():
                     break
 
     def run_stage3(self):
-        self.DC.cross_or_red_setter("cross")
+        # self.DC.cross_or_red_setter("cross")
+        self.line_type_pub.publish(Float64(self.cross))
         rospy.sleep(1)
         rate = 20
         end = True
@@ -127,7 +137,8 @@ class Stage2():
                         print("im here")
                         self.LF.go_straight_for_half_meters()
                 else:
-                    self.DC.cross_or_red_setter(cross_or_red="red")
+                    # self.DC.cross_or_red_setter(cross_or_red="red")
+                    self.line_type_pub.publish(Float64(self.red))
                     try:
                         red_detected = rospy.wait_for_message(f"/{self.vehicle_name}/red_cross_line_detect",Float64, timeout=1).data
                     except rospy.ROSException:

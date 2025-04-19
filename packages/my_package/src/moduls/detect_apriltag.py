@@ -4,7 +4,7 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from sensor_msgs.msg import CompressedImage, CameraInfo
-
+from std_msgs.msg import ColorRGBA, Float64, Int64
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
@@ -26,7 +26,6 @@ class DetectApriltag(MOA):
 
         # bridge between OpenCV and ROS
         self._bridge = CvBridge()
-        self.tag_id = None
 
         # variables to store camera matrix and distortion coefficients
         self._camera_matrix = None
@@ -48,10 +47,11 @@ class DetectApriltag(MOA):
         
         # construct subscriber for image topics
         self.sub = rospy.Subscriber(self._camera_topic, CompressedImage, self.callback)
-
+        
         # Publisher for the processed image with AprilTag detections
         self.image_pub = rospy.Publisher(self._undistorted_topic, CompressedImage, queue_size=10)
-        
+        self.tag_id  = rospy.Publisher(f"/{self._vehicle_name}/tag_id", Int64, queue_size=10)
+
     def camera_info_setter(self, camera_matrix, distortion_coeffs):
         self._camera_matrix = camera_matrix
         self._distortion_coeffs = distortion_coeffs
@@ -101,7 +101,9 @@ class DetectApriltag(MOA):
         # Draw bounding boxes and tag IDs on the image
         output_image = cv2.cvtColor(bw_image, cv2.COLOR_GRAY2BGR)  # Convert to BGR for colored drawings
         for tag in tags:
-            self.tag_id = tag.tag_id  # Store the detected tag ID
+            # self.tag_id = tag.tag_id  # Store the detected tag ID
+            self.tag_id.publish(Int64(tag.tag_id))  # Publish the tag ID
+            print(tag.tag_id)
             # Draw bounding box
             # for i in range(4):
             #     pt1 = (int(tag.corners[i-1][0]), int(tag.corners[i-1][1]))
@@ -126,5 +128,5 @@ class DetectApriltag(MOA):
         # self.image_pub.publish(processed_msg)
 
 
-    def get_tag_id(self):
-        return self.tag_id
+    # def get_tag_id(self):
+    #     return self.tag_id

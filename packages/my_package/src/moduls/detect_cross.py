@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from mother_of_all import MotherOfAll as MOA
 
 
-class Detect_Corss(MOA):
+class DetectCorss(MOA):
 
     def __init__(self, 
                  vehicle_name, 
@@ -41,7 +41,6 @@ class Detect_Corss(MOA):
         self.corss_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/corss_line_detect", Float64, queue_size=10)
         self.red_cross_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/red_cross_line_detect", Float64, queue_size=10)
         self.pedestrian_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/pedestrian_detect", Float64, queue_size=10)
-
         # Subscribers
 
         self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
@@ -67,9 +66,14 @@ class Detect_Corss(MOA):
     
         self.has_pedestrian = False
 
+        self.red = 1
+        self.cross = 0
+
 
     def cross_or_red_setter(self, cross_or_red):
+
         self.cross_or_red = cross_or_red
+
 
     def camera_info_setter(self, camera_matrix, distortion_coeffs):
         self.camera_matrix = camera_matrix
@@ -78,6 +82,10 @@ class Detect_Corss(MOA):
     def cb_camera(self, msg):
         if self.camera_matrix is None or self.distortion_coeffs is None:
             return
+        try:
+            type = rospy.wait_for_message(f"/{self.vehicle_name}/line_type",Float64, timeout=1).data
+        except:
+            type = self.red
             
         # Process image for lane detection and visualization
         image = self.bridge.compressed_imgmsg_to_cv2(msg)
@@ -93,9 +101,9 @@ class Detect_Corss(MOA):
         cropped_image = undistorted_image[crop_top:crop_bottom, crop_left:crop_right]
         # Detect lanes and mark centers on the cropped image
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
-        if self.cross_or_red == "red":
+        if type == self.red:
             self.detect_red_cross(cropped_image)
-        elif self.cross_or_red == "cross":
+        elif type == self.cross:
             image = self.detect_corss(cropped_image)
         # image = self.detect_pedestrian(cropped_image)
         distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image)
@@ -266,8 +274,9 @@ class Detect_Corss(MOA):
 
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
-                    if distance < 0.1:  # Stop if red line is close (adjust threshold as needed)
+                    if distance < 0.2:  # Stop if red line is close (adjust threshold as needed)
                         self.red_cross_line_detect_pub.publish(Float64(1))
+                        print("red_detected")
                         # rospy.loginfo("Red line detected, stopping the robot.")
                         # return image
         else:

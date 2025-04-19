@@ -30,7 +30,7 @@ class main(DTROS):
 
 
         ##############following stages are added#####################
-        self.stage2 = Stage2.Stage2(self.vehicle_name,ID1=50,ID2=48)
+        self.stage2 = Stage2.Stage2(self.vehicle_name,ID1=48,ID2=50)
 
         
         
@@ -62,8 +62,8 @@ class main(DTROS):
         rate = 20
         #rospy.spin()
         self.stage2.run_stage2()
-        rospy.loginfo("Stage 2 completed, now running Stage 3...")
-        self.stage2.run_stage3()
+        # rospy.loginfo("Stage 2 completed, now running Stage 3...")
+        # self.stage2.run_stage3()
 
     def on_shutdown(self):
         self.stage2.stop()
