@@ -49,7 +49,7 @@ class Lane_Following(MOA):
         self.angular_vel = 2.6
         
         # Control parameters
-        self.KP = 0.02  # Proportional gain
+        self.KP = 0.015  # Proportional gain
         self.KI = 0.0001  # Integral gain
         self.KD = 0.01    # Derivative gain
         self.TARGET_DISTANCE = 20  # meters
