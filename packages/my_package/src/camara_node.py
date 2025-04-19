@@ -29,7 +29,7 @@ class Camara_node(DTROS):
         self.camera_matrix = None
         self.distortion_coeffs = None
         self.DA = da(self.vehicle_name)
-        self.DC = dc(self.vehicle_name, None,None, debugger=False,corss_or_red="red")
+        self.DC = dc(self.vehicle_name, None,None, debugger=True,corss_or_red="red")
 
         ##############following stages are added#####################
 

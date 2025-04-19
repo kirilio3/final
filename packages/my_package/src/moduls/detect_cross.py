@@ -101,14 +101,15 @@ class DetectCorss(MOA):
         cropped_image = undistorted_image[crop_top:crop_bottom, crop_left:crop_right]
         # Detect lanes and mark centers on the cropped image
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
-        print(type)
+        # print(type)
+        type = 0
         if type == self.red:
             image1 = self.detect_red_cross(cropped_image)
         elif type == self.cross:
             image1 = self.detect_corss(cropped_image)
         # image = self.detect_pedestrian(cropped_image)
-        # distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image1)
-        distorted_msg = None
+        distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image1)
+
         if self.debug: self.debugger(distorted_msg)
 
     # def cb_camera_red_corss(self, msg):

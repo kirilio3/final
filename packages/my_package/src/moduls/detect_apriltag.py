@@ -103,7 +103,7 @@ class DetectApriltag(MOA):
         for tag in tags:
             # self.tag_id = tag.tag_id  # Store the detected tag ID
             self.tag_id.publish(Int64(tag.tag_id))  # Publish the tag ID
-            print(tag.tag_id)
+            # print(tag.tag_id)
             # Draw bounding box
             # for i in range(4):
             #     pt1 = (int(tag.corners[i-1][0]), int(tag.corners[i-1][1]))
