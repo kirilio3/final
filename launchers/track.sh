@@ -6,7 +6,7 @@ source /environment.sh
 dt-launchfile-init
 
 # launch publisher
-rosrun my_package track_following.py
+rosrun my_package test.py
 
 # wait for app to end
 dt-launchfile-join

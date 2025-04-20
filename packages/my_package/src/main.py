@@ -58,12 +58,11 @@ class main(DTROS):
     
 
     def run(self):
-        rospy.sleep(2)
         rate = 20
         #rospy.spin()
-        self.stage2.run_stage2()
+        # self.stage2.run_stage2()
         # rospy.loginfo("Stage 2 completed, now running Stage 3...")
-        # self.stage2.run_stage3()
+        self.stage2.run_stage3()
 
     def on_shutdown(self):
         self.stage2.stop()

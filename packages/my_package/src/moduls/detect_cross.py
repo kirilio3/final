@@ -47,7 +47,13 @@ class DetectCorss(MOA):
         self.cross_or_red = corss_or_red
 
         self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
-
+        self.line_type = 1
+        self.linetype = rospy.Subscriber(
+            f"/{self.vehicle_name}/line_type",
+            Float64,
+            self._line_type_cb,
+            queue_size=1,
+        )
         # self.yellow_lower = np.array([20, 100, 100], np.uint8)
         # self.yellow_upper = np.array([30, 255, 255], np.uint8)
         # self.white_lower = np.array([0, 0, 200], np.uint8)
@@ -63,7 +69,7 @@ class DetectCorss(MOA):
         self.red_upper1 = np.array([10, 255, 255], np.uint8) # Upper bound for red
         self.red_lower2 = np.array([170, 150, 50], np.uint8) # Second lower bound for red
         self.red_upper2 = np.array([180, 255, 255], np.uint8) # Second upper bound for red
-    
+        self._kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))
         self.has_pedestrian = False
 
         self.red = 1
@@ -74,6 +80,8 @@ class DetectCorss(MOA):
 
         self.cross_or_red = cross_or_red
 
+    def _line_type_cb(self, msg):
+        self.line_type = msg.data
 
     def camera_info_setter(self, camera_matrix, distortion_coeffs):
         self.camera_matrix = camera_matrix
@@ -82,15 +90,12 @@ class DetectCorss(MOA):
     def cb_camera(self, msg):
         if self.camera_matrix is None or self.distortion_coeffs is None:
             return
-        try:
-            type = rospy.wait_for_message(f"/{self.vehicle_name}/line_type",Float64, timeout=1).data
-        except:
-            type = self.red
+        type = self.line_type
             
         # Process image for lane detection and visualization
         image = self.bridge.compressed_imgmsg_to_cv2(msg)
         # undistorted_image = cv2.undistort(image, self.camera_matrix, self.distortion_coeffs)
-        undistorted_image = cv2.GaussianBlur(image, (9, 9), 0)
+        undistorted_image = cv2.GaussianBlur(image, (3, 3), 0)
         
         # Crop the image (e.g., lower half of 640x480 image)
         height, width = undistorted_image.shape[:2]
@@ -102,12 +107,16 @@ class DetectCorss(MOA):
         # Detect lanes and mark centers on the cropped image
         # yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
         # print(type)
-        type = 0
+        # type = 1
         if type == self.red:
-            image1 = self.detect_red_cross(cropped_image)
+            # image1 = self.detect_red_cross(cropped_image)
+            image1 = self.detect_red_line(cropped_image)
         elif type == self.cross:
             image1 = self.detect_corss(cropped_image)
-        # image = self.detect_pedestrian(cropped_image)
+        if image1 is None:
+            # fallback to the original crop (or undistorted_image)
+            print("NONE")
+            image1 = cropped_image
         distorted_msg = self.bridge.cv2_to_compressed_imgmsg(image1)
 
         if self.debug: self.debugger(distorted_msg)
@@ -167,7 +176,7 @@ class DetectCorss(MOA):
                 numberOfCon +=1
                 x, y, w, h = cv2.boundingRect(contour)
                 # Check that the bounding box is within image bounds
-                if y + h < height and x + w < width and x > 0 and y > 0 and area/numberOfCon >1000:
+                if y + h < height and x + w < width and x > 0 and y > 0 and area/numberOfCon >300:
                     # Draw a red rectangle around the detected blue shape
                     cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
                     # rospy.loginfo(area)
@@ -184,7 +193,7 @@ class DetectCorss(MOA):
                         distance = abs((real_height_meters * focal_length) / pixel_height)
                         # rospy.loginfo(distance)
                         self.detect_pedestrian(image)
-                        if distance < 0.3:  # If blue shape is close
+                        if distance < 0.13:  # If blue shape is close
                             # self.detect_pedestrian(image)
                             self.detect_corss_reached = True
                             detected = True
@@ -246,7 +255,35 @@ class DetectCorss(MOA):
         
         return image  # Return the modified image
     
-    def detect_red_cross(self,image):
+    def detect_red_cross(self, image):
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        m1 = cv2.inRange(hsv, self.red_lower1, self.red_upper1)
+        m2 = cv2.inRange(hsv, self.red_lower2, self.red_upper2)
+        mask = cv2.bitwise_or(m1, m2)
+        mask = cv2.dilate(mask, self._kernel, iterations=1)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            self.red_cross_line_detect_pub.publish(Float64(0))
+            return image
+
+        cnt = max(contours, key=cv2.contourArea)
+        x,y,w,h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        H, W = image.shape[:2]
+        if area > 300 and y+h < H and x+w < W:
+            # draw, publish, etc…
+            cv2.rectangle(image, (x,y), (x+w,y+h), (0,0,255), 2)
+            distance = (0.1 * 50) / float(h)
+            # print(distance)
+            if distance < 0.13:
+                self.red_cross_line_detect_pub.publish(Float64(1))
+            else:
+                self.red_cross_line_detect_pub.publish(Float64(0))
+        else:
+            self.red_cross_line_detect_pub.publish(Float64(0))
+
+        return image
+    def detect_red_line(self, image):
         # Convert image to HSV for red line detection
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
@@ -261,6 +298,7 @@ class DetectCorss(MOA):
 
         # Find contours
         contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
         if contours:
             # Find the largest red object
             largest_contour = max(contours, key=cv2.contourArea)
@@ -269,8 +307,6 @@ class DetectCorss(MOA):
             # Check if the red line is fully in view and significant
             height, width, _ = image.shape
             if y + h < height and x + w < width and x > 0 and y > 0 and cv2.contourArea(largest_contour) > 300:
-                print("y")
-                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 # Calculate distance (simplified version)
                 focal_length = 50  # Adjust based on your camera calibration
                 real_height_meters = 0.1  # Estimated height of the red line
@@ -278,12 +314,16 @@ class DetectCorss(MOA):
 
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
-                    print("y")
-                    if distance < 0.2:  # Stop if red line is close (adjust threshold as needed)
+                    if distance < 0.13:  # Stop if red line is close (adjust threshold as needed)
+                        self.red_line_reached = True
                         self.red_cross_line_detect_pub.publish(Float64(1))
-                        print("red_detected")
                         # rospy.loginfo("Red line detected, stopping the robot.")
                         return image
+                    else:
+                        self.red_cross_line_detect_pub.publish(Float64(0))
+                        return image
+            else:
+                return image
         else:
             self.red_cross_line_detect_pub.publish(Float64(0))
             return image

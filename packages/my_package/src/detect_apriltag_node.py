@@ -18,19 +18,18 @@ import time
 import signal
 from moduls.detect_apriltag import DetectApriltag as da
 from moduls.detect_cross import DetectCorss as dc
-class Camara_node(DTROS):
+class DetectApriltagNode(DTROS):
 
     def __init__(self, node_name):
-        super(Camara_node, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
+        super(DetectApriltagNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         
         self.bridge = CvBridge()
         self.camera_matrix = None
         self.distortion_coeffs = None
-        # self.DA = da(self.vehicle_name)
-        self.DC = dc(self.vehicle_name, None,None, debugger=False
-                     ,corss_or_red="red")
+        self.DA = da(self.vehicle_name)
+        # self.DC = dc(self.vehicle_name, None,None, debugger=True,corss_or_red="red")
 
         ##############following stages are added#####################
 
@@ -53,8 +52,7 @@ class Camara_node(DTROS):
     def cb_camera_info(self, msg):
         self.camera_matrix = np.array(msg.K).reshape(3, 3)
         self.distortion_coeffs = np.array(msg.D)
-        self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
-        # self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
+        self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
     
 
 
@@ -64,7 +62,7 @@ class Camara_node(DTROS):
 
     def on_shutdown(self):
         # self.stage2.stop()
-        super(Camara_node, self).on_shutdown()
+        super(DetectApriltagNode, self).on_shutdown()
         sys.exit(0)
 
     # def signal_handler(self, sig, frame):
@@ -75,5 +73,5 @@ class Camara_node(DTROS):
     
 if __name__ == '__main__':
 
-    node = Camara_node(node_name="main")
+    node = DetectApriltagNode(node_name="main")
     node.run()

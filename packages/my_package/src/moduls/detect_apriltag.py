@@ -23,7 +23,7 @@ class DetectApriltag(MOA):
         self._camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
         self._camera_info_topic = f"/{self._vehicle_name}/camera_node/camera_info"
         self._undistorted_topic = f"/{self._vehicle_name}/camera_node/image/distorted_image/compressed"
-
+        self.duckiebot_detected = False
         # bridge between OpenCV and ROS
         self._bridge = CvBridge()
 
@@ -44,24 +44,68 @@ class DetectApriltag(MOA):
         )
 
 
-        
+        self.circle_matrix = [7, 3]  # 7x3 circle pattern on Duckiebot back
+        self.blobdetector_min_area = 10
+        self.blobdetector_min_dist_between_blobs = 2
+        self.simple_blob_detector = self.setup_blob_detector()
         # construct subscriber for image topics
         self.sub = rospy.Subscriber(self._camera_topic, CompressedImage, self.callback)
-        
+        self.apriltag_type_sub = rospy.Subscriber(f"/{self._vehicle_name}/apriltag_type", Int64, self.apriltag_type_cb, queue_size=1)
         # Publisher for the processed image with AprilTag detections
+        self.duckiebot_detected_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_detected", Int64, queue_size=1)
+        self.duckiebot_distance_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_distance", Float64, queue_size=1)
         self.image_pub = rospy.Publisher(self._undistorted_topic, CompressedImage, queue_size=10)
         self.tag_id  = rospy.Publisher(f"/{self._vehicle_name}/tag_id", Int64, queue_size=10)
+
+        self.apriltag_type = 0
 
     def camera_info_setter(self, camera_matrix, distortion_coeffs):
         self._camera_matrix = camera_matrix
         self._distortion_coeffs = distortion_coeffs
 
+    def apriltag_type_cb(self, msg):
+        self.apriltag_type = msg.data
+
+    def cb_image(self, image_msg):
+        image_cv = self._bridge.compressed_imgmsg_to_cv2(image_msg, "bgr8")
+        (detection, centers) = cv2.findCirclesGrid(
+            image_cv,
+            patternSize=tuple(self.circle_matrix),
+            flags=cv2.CALIB_CB_SYMMETRIC_GRID,
+            blobDetector=self.simple_blob_detector,
+        )
+
+        self.duckiebot_detected = detection > 0
+        if self.duckiebot_detected and centers is not None:
+            focal_length = 50  # Adjust based on camera calibration
+            real_height_meters = 0.1  # Approx height of Duckiebot pattern (10cm)
+            pixel_height = max([c[0, 1] for c in centers]) - min([c[0, 1] for c in centers])
+            self.duckiebot_detected_pub.publish(Int64(1))  # Publish detection status
+            # print(self.duckiebot_detected)
+            if pixel_height > 0:
+                self.duckiebot_distance = (real_height_meters * focal_length) / pixel_height
+                self.duckiebot_distance_pub.publish(Float64(self.duckiebot_distance))  # Publish distance
+                # print("Distance to Duckiebot: ", self.duckiebot_distance)
+            else:
+                self.duckiebot_distance = None
+        else:
+            self.duckiebot_distance = None
+
     def callback(self, msg):
         if self._camera_matrix is None or self._distortion_coeffs is None:
             rospy.logwarn("Waiting for camera calibration parameters...")
             return
-        
-        # convert JPEG bytes to CV image
+        # self.apriltag_type = 1
+        if not self.apriltag_type :
+            # Call the apriltag_callback function
+            self.apriltag_callback(msg)
+        else:
+            self.cb_image(msg)
+
+
+
+
+    def apriltag_callback(self, msg):
         image = self._bridge.compressed_imgmsg_to_cv2(msg)
         
         # Undistort the image using the camera calibration parameters
@@ -90,7 +134,7 @@ class DetectApriltag(MOA):
         # Detect AprilTags in the grayscale image 
         tags = self._detector.detect(
             bw_image,
-            estimate_tag_pose=True,  # Enable pose estimation
+            # estimate_tag_pose=True,  # Enable pose estimation
             camera_params=camera_params,
             tag_size=0.065  # Duckietown tags are typically 6.5cm, adjust if different
         )
@@ -103,7 +147,6 @@ class DetectApriltag(MOA):
         for tag in tags:
             # self.tag_id = tag.tag_id  # Store the detected tag ID
             self.tag_id.publish(Int64(tag.tag_id))  # Publish the tag ID
-            # print(tag.tag_id)
             # Draw bounding box
             # for i in range(4):
             #     pt1 = (int(tag.corners[i-1][0]), int(tag.corners[i-1][1]))
@@ -124,9 +167,12 @@ class DetectApriltag(MOA):
         # # Convert the processed image back to a ROS CompressedImage message
         # processed_msg = self._bridge.cv2_to_compressed_imgmsg(output_image)
 
-        # # Publish the processed image with AprilTag detections
+        # # # Publish the processed image with AprilTag detections
         # self.image_pub.publish(processed_msg)
 
 
-    # def get_tag_id(self):
-    #     return self.tag_id
+    def setup_blob_detector(self):
+        params = cv2.SimpleBlobDetector_Params()
+        params.minArea = self.blobdetector_min_area
+        params.minDistBetweenBlobs = self.blobdetector_min_dist_between_blobs
+        return cv2.SimpleBlobDetector_create(params)
