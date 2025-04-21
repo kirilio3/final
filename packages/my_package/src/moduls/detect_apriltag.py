@@ -54,6 +54,10 @@ class DetectApriltag(MOA):
         # Publisher for the processed image with AprilTag detections
         self.duckiebot_detected_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_detected", Int64, queue_size=1)
         self.duckiebot_distance_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_distance", Float64, queue_size=1)
+        self.duckiebot_pos_x_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_pos_x", Float64, queue_size=1)
+        self.duckiebot_pos_y_pub = rospy.Publisher(f"/{self._vehicle_name}/duckiebot_pos_y", Float64, queue_size=1)
+
+        # self.duckiebot_width_pub = rospy.
         self.image_pub = rospy.Publisher(self._undistorted_topic, CompressedImage, queue_size=10)
         self.tag_id  = rospy.Publisher(f"/{self._vehicle_name}/tag_id", Int64, queue_size=10)
 
@@ -75,21 +79,58 @@ class DetectApriltag(MOA):
             blobDetector=self.simple_blob_detector,
         )
 
-        self.duckiebot_detected = detection > 0
+        self.duckiebot_detected = bool(detection)
         if self.duckiebot_detected and centers is not None:
-            focal_length = 50  # Adjust based on camera calibration
-            real_height_meters = 0.1  # Approx height of Duckiebot pattern (10cm)
-            pixel_height = max([c[0, 1] for c in centers]) - min([c[0, 1] for c in centers])
-            self.duckiebot_detected_pub.publish(Int64(1))  # Publish detection status
-            # print(self.duckiebot_detected)
-            if pixel_height > 0:
-                self.duckiebot_distance = (real_height_meters * focal_length) / pixel_height
-                self.duckiebot_distance_pub.publish(Float64(self.duckiebot_distance))  # Publish distance
-                # print("Distance to Duckiebot: ", self.duckiebot_distance)
+            # --- your existing distance+pos code ---
+            focal_length = 50
+            real_h = 0.1
+            ph = max(c[0,1] for c in centers) - min(c[0,1] for c in centers)
+            self.duckiebot_detected_pub.publish(Int64(1))
+
+            if ph>0:
+                self.duckiebot_distance = (real_h*focal_length)/ph
+                self.duckiebot_distance_pub.publish(Float64(self.duckiebot_distance))
             else:
                 self.duckiebot_distance = None
+                self.duckiebot_distance_pub.publish(Float64(-1))
+
+            pts = centers.squeeze()           # shape (N,2)
+            cx, cy = pts.mean(axis=0).astype(int)
+            h, w = image_cv.shape[:2]
+            dx = cx - w//2;  dy = cy - h//2
+            self.duckiebot_pos_x_pub.publish(Float64(cx))
+            self.duckiebot_pos_y_pub.publish(Float64(cy))
+
+            # # --- NEW: draw annotation on image_cv ---
+            # # 1) draw each detected circle center
+            # for (x, y) in pts.astype(int):
+            #     cv2.circle(image_cv, (x, y), 4, (0,255,0), -1)
+
+            # # 2) bounding rectangle around all centers
+            # min_x, min_y = pts[:,0].min().astype(int), pts[:,1].min().astype(int)
+            # max_x, max_y = pts[:,0].max().astype(int), pts[:,1].max().astype(int)
+            # cv2.rectangle(image_cv,
+            #               (min_x, min_y),
+            #               (max_x, max_y),
+            #               (255,0,0), 2)
+
+            # # 3) draw the centroid
+            # cv2.circle(image_cv, (cx, cy), 6, (0,0,255), -1)
+
+            # # 4) (optional) label it
+            # cv2.putText(image_cv,
+            #             "Duckiebot",
+            #             (min_x, min_y - 10),
+            #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1)
+
+            # 5) publish annotated image
+            # annotated_msg = self._bridge.cv2_to_compressed_imgmsg(image_cv, "bgr8")
+            # self.annotated_img_pub.publish(annotated_msg)
+            return image_cv
         else:
-            self.duckiebot_distance = None
+            self.duckiebot_distance = -1
+            self.duckiebot_distance_pub.publish(Float64(-1))
+            return image_cv
 
     def callback(self, msg):
         if self._camera_matrix is None or self._distortion_coeffs is None:
@@ -100,7 +141,12 @@ class DetectApriltag(MOA):
             # Call the apriltag_callback function
             self.apriltag_callback(msg)
         else:
-            self.cb_image(msg)
+            output_image = self.cb_image(msg)
+            # # Convert the processed image back to a ROS CompressedImage message
+            # processed_msg = self._bridge.cv2_to_compressed_imgmsg(output_image)
+
+            # # # Publish the processed image with AprilTag detections
+            # self.image_pub.publish(processed_msg)
 
 
 

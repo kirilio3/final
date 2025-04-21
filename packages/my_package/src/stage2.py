@@ -37,16 +37,16 @@ class Stage2():
         # self.DA = da.DetectApriltag(self.vehicle_name)
 
         self.distance = 10
-        
+        self.counter = 0
         
         # Publishers
         self.image_pub = rospy.Publisher(f"/{self.vehicle_name}/camera_node/image/distorted_image/compressed", CompressedImage, queue_size=10)
         self.red_cross_line_detect_pub = rospy.Publisher(f"/{self.vehicle_name}/red_cross_line_detect", Float64, queue_size=1)
         self.line_type_pub = rospy.Publisher(f"/{self.vehicle_name}/line_type", Float64, queue_size=10)
-        self.tag_id  = rospy.Publisher(f"/{self.vehicle_name}/tag_id", Int64, queue_size=10)
+        self.tag_id= None
         self.apriltag_type_pub = rospy.Publisher(f"/{self.vehicle_name}/apriltag_type", Int64, queue_size=10)
+        # self.sign_change_pub = rospy.Publisher(f"/{self.vehicle_name}/sign_change", Int64, queue_size=10)
         # Subscribers
-
         self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
         self.camera_info_topic = f"/{self.vehicle_name}/camera_node/camera_info"
         self.linetype = rospy.Subscriber(f"/{self.vehicle_name}/red_cross_line_detect"
@@ -57,11 +57,11 @@ class Stage2():
         self.cross_line_detect = rospy.Subscriber(f"/{self.vehicle_name}/corss_line_detect",Float64, self.cross_line_detect_cb, queue_size=1)
         self.ped_detection = rospy.Subscriber(f"/{self.vehicle_name}/pedestrian_detect",Float64, self.ped_detection_cb, queue_size=1)
         self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
-        self.duckiebot_detect_sub = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_detected", Int64, self.duckiebot_detected_cb, queue_size=1)
+        # self.duckiebot_detect_sub = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_detected", Int64, self.duckiebot_detected_cb, queue_size=1)
         self.duckiebot_distance_sub = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_distance", Float64, self.duckiebot_distance_cb, queue_size=1)
         self.cross_line_detect = 0
         # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
-        self.duckiebot_distance = None
+        self.duckiebot_distance = -1
         self.duckiebot_detected = 0
         self.ped = 0
         self.red = 1
@@ -95,29 +95,73 @@ class Stage2():
         self.LF.stop()
     
 
+    def run_stage1(self):
+        self.apriltag_type_pub.publish(Int64(1))
+        while not rospy.is_shutdown():
+            while self.duckiebot_distance !=-1 and self.duckiebot_distance <= 0.3:
+                print(self.duckiebot_distance)
+                self.LF.stop(time=0.01)
+            while self.duckiebot_distance != -1 and self.duckiebot_distance > 0.25 and self.duckiebot_distance<=0.5:
+                error= self.LF.Bot_following(20,self.duckiebot_distance)
+                if self.line_reached :
+                    print(self.counter)
+                    self.counter+=1
+                    rospy.loginfo("Red cross line detected")
+                    # rospy.sleep(0.3)
+                    self.LF.stop()
+                    if error > 320:
+                        self.LF.turn_left_90_degree_arc()
+                    else:
+                        self.LF.turn_right_90_degree_arc()
+                    if self.counter >=3: 
+                        break
+                # print(self.duckiebot_distance)
+                
+            if self.duckiebot_distance == -1:
+                self.LF.lane_follow(10, 20)
+                if self.line_reached :
+                    print(self.counter)
+                    self.counter+=1
+                    rospy.loginfo("Red cross line detected")
+                    # rospy.sleep(0.3)
+                    self.LF.stop()
+                    self.LF.go_straight(0.2,0.25,time_to_stop=0)
+                    if self.counter >=3: 
+                        break
+
     def run_stage2(self):
+        self.apriltag_type_pub.publish(Int64(0))
         self.line_type_pub.publish(Float64(self.red))
         rospy.sleep(1)
-        rate = 20
+        rate = 10
 
         while True:  
             while not rospy.is_shutdown(): 
                 self.LF.lane_follow(10,rate)
+                tagID = self.tag_id
                 if self.line_reached:
                     rospy.loginfo("Red cross line detected")
-                    rospy.sleep(0.5)
+                if self.line_reached and tagID is not None:
+                    rospy.loginfo("Red cross line detected")
                     self.LF.stop()
+                    # self.LF.go_straight(0.5,0.25,time_to_stop=0)
+                    # self.LF.turn_left(1.57079633,4)
+                    # self.LF.go_straight(0.1,0.25,time_to_stop=0)
+
                     break
-            tagID = self.tag_id
+
             rospy.loginfo(f"Tag ID: {tagID}")
             if tagID is not None:
                 if tagID == self.ID1:
                     rospy.loginfo(f"Tag ID {tagID} detected")
                     self.LF.turn_left_90_degree_arc()
+                    self.tag_id = None
                 elif tagID == self.ID2:
                     rospy.loginfo(f"Tag ID {tagID} detected")
                     self.LF.stop(1)
-                    self.LF.turn_right_90_degree_arc()
+                    self.LF.go_straight(0.3,0.25,time_to_stop=0)
+                    self.LF.turn_right(1.57079633,4)
+                    self.LF.go_straight(0.1,0.25,time_to_stop=0)
                     print("after")
                     self.LF.stop()
                     break
@@ -127,33 +171,45 @@ class Stage2():
         self.apriltag_type_pub.publish(Int64(1))
         self.line_type_pub.publish(Float64(self.cross))
         rospy.sleep(1)
-        rate = 20
+        rate = 10
         end = True
         while end:  
             while not rospy.is_shutdown(): 
                 self.LF.lane_follow(20,rate)
-                print(self.duckiebot_distance)
-                if self.duckiebot_distance is not None and self.duckiebot_distance <= 0.3:
+                # print(self.duckiebot_distance)
+                if self.duckiebot_distance != -1 and self.duckiebot_distance <= 0.25:
                     self.LF.stop()
                     rospy.loginfo("Duckiebot detected")
-                    self.LF.send_cmd(v=0.2, omega=7,time=0.5)
-                    self.LF.go_straight_for_half_meters(time=0.5,speed_multiplier=1.5)
+                    self.LF.turn_left(0.785398163, 4)
+                    self.LF.go_straight(0.38,0.25)
+                    self.LF.turn_right(1.04719755, 4)
+                    # counter = 0
+                    # flag = True
+                    # self.sign_change_pub.publish(Int64(-1))
+                    # self.duckiebot_distance_sub.unregister()
+                    # self.duckiebot_distance = None
+                    # self.LF.send_cmd(v=0.25, omega=5,time=0.5)
+                    # self.LF.go_straight_for_half_meters(time=0.5,speed_multiplier=1.5)
+                    # self.LF.stop()
+                    # self.LF.send_cmd(v=0.2, omega=-3.5,time=0.5)
                     self.apriltag_type_pub.publish(Int64(0))
-                    self.duckiebot_distance = None
+                    self.duckiebot_distance = -1
                     rospy.sleep(1)
+                # if counter>30 and flag:
+                #     self.sign_change_pub.publish(Int64(1))
                 if self.cross_walk_number < 2:
                     cross_line_detected = self.cross_line_detect
-                    rospy.loginfo(f"cross line detected: {cross_line_detected}")
+                    # rospy.loginfo(f"cross line detected: {cross_line_detected}")
                     if cross_line_detected:
                         self.cross_walk_number+=1
-                        rospy.loginfo("cross line detected")
+                        # rospy.loginfo("cross line detected")
                         self.LF.stop()
                         rospy.sleep(1)
                         ped_detected = self.ped
                         while ped_detected:
                             ped_detected = self.ped
-                        print("im here")
-                        self.LF.go_straight_for_half_meters()
+                        # s
+                        self.LF.go_straight(0.4,0.25,time_to_stop=0)
                 else:
                     # self.DC.cross_or_red_setter(cross_or_red="red")
                     self.line_type_pub.publish(Float64(self.red))
@@ -161,7 +217,7 @@ class Stage2():
                     if red_detected:
                         rospy.sleep(0.5)
                         self.stop()
-                        rospy.loginfo("Red cross line detected")
+                        # rospy.loginfo("Red cross line detected")
                         end = False
                         break
 

@@ -171,7 +171,7 @@ class DetectCorss(MOA):
         # Loop over each contour found
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 1000:  # Check for significant contours
+            if area > 500:  # Check for significant contours
                 total_con += area
                 numberOfCon +=1
                 x, y, w, h = cv2.boundingRect(contour)
@@ -193,7 +193,7 @@ class DetectCorss(MOA):
                         distance = abs((real_height_meters * focal_length) / pixel_height)
                         # rospy.loginfo(distance)
                         self.detect_pedestrian(image)
-                        if distance < 0.13:  # If blue shape is close
+                        if distance < 0.20:  # If blue shape is close
                             # self.detect_pedestrian(image)
                             self.detect_corss_reached = True
                             detected = True
@@ -201,6 +201,11 @@ class DetectCorss(MOA):
                             # if not self.has_pedestrian: 
                             #     self.pedestrian_detect_pub.publish(Float64(0))
                             # rospy.loginfo("corss detected, stopping the robot.")
+                        else:
+                            self.corss_line_detect_pub.publish(Float64(0))
+                    else:
+                        self.corss_line_detect_pub.publish(Float64(0))
+
         
         # If no contour met the condition, publish that no cross is detected.
         if not detected:
@@ -306,7 +311,7 @@ class DetectCorss(MOA):
             
             # Check if the red line is fully in view and significant
             height, width, _ = image.shape
-            if y + h < height and x + w < width and x > 0 and y > 0 and cv2.contourArea(largest_contour) > 300:
+            if y + h < height and x + w < width and x > 0 and y > 0 and cv2.contourArea(largest_contour) > 100:
                 # Calculate distance (simplified version)
                 focal_length = 50  # Adjust based on your camera calibration
                 real_height_meters = 0.1  # Estimated height of the red line
@@ -314,7 +319,7 @@ class DetectCorss(MOA):
 
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
-                    if distance < 0.13:  # Stop if red line is close (adjust threshold as needed)
+                    if distance < 0.15:  # Stop if red line is close (adjust threshold as needed)
                         self.red_line_reached = True
                         self.red_cross_line_detect_pub.publish(Float64(1))
                         # rospy.loginfo("Red line detected, stopping the robot.")
@@ -323,6 +328,7 @@ class DetectCorss(MOA):
                         self.red_cross_line_detect_pub.publish(Float64(0))
                         return image
             else:
+                self.red_cross_line_detect_pub.publish(Float64(0))
                 return image
         else:
             self.red_cross_line_detect_pub.publish(Float64(0))

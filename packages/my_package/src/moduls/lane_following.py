@@ -44,14 +44,15 @@ class Lane_Following(MOA):
         self.WHEEL_RADIUS = 0.0318
         self.WHEEL_CIRC = 2.0 * math.pi * self.WHEEL_RADIUS
         self.BASELINE = 0.077
-        self.VELOCITY = 0.25
+        self.VELOCITY = 0.3
         self.OMEGA_SPEED = 2.5
         self.angular_vel = 2.6
         self.counter =0
         # Control parameters
-        self.KP = 0.1
-        self.KI = 0.0
-        self.KD = 0.005
+        self.KP = 0.013
+        # sef.KP = 0.012
+        self.KI = 0.001
+        self.KD = 0.0001
         self.TARGET_DISTANCE = 20  # meters
 
         self.deriv = 0.0
@@ -60,7 +61,7 @@ class Lane_Following(MOA):
         self.prev_error = 0.0
         self.integral = 0.0
         self.prev_time = None
-        self.error_window = deque(maxlen=5)
+        # self.error_window = deque(maxlen=5)
         
         # Publishers
         twist_topic = f"/{self.vehicle_name}/car_cmd_switch_node/cmd"
@@ -76,10 +77,16 @@ class Lane_Following(MOA):
         self.right_encoder_topic = f"/{self.vehicle_name}/right_wheel_encoder_node/tick"
         self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
 
+        self.pos_x = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_pos_x", Float64, self.cb_pos_x)
+        self.pos_y = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_pos_y", Float64, self.cb_pos_y)
+
+
         
         self.sub_left_enc = rospy.Subscriber(self.left_encoder_topic, WheelEncoderStamped, self.cb_left_encoder)
         self.sub_right_enc = rospy.Subscriber(self.right_encoder_topic, WheelEncoderStamped, self.cb_right_encoder)
         self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
+        # self.sign_change_sup = rospy.Subscriber(f"/{self.vehicle_name}/sign_change", Float64, self.sign_change_cb, queue_size=1)
+        # self.sign_change = 1
 
         self.yellow_msg_sub = rospy.Subscriber(f"/{self.vehicle_name}/yellow_lane", Float64, self.yellow_msg_cb,queue_size=1,)
         self.yellow_msg = 0
@@ -91,7 +98,17 @@ class Lane_Following(MOA):
         self.white_lower = np.array([0, 0, 200], np.uint8)
         self.white_upper = np.array([180, 30, 255], np.uint8)
 
+        self.pos_x = None
+        self.pos_y = None
         self.cross_detected = 0
+
+    # def sign_change_cb(self, msg):
+    #     self.sign_change = msg.data
+
+    def cb_pos_x(self, msg):
+        self.pos_x = msg.data
+    def cb_pos_y(self, msg):
+        self.pos_y = msg.data
 
     def cb_camera(self, msg):
         if self.camera_matrix is None or self.distortion_coeffs is None:
@@ -101,6 +118,7 @@ class Lane_Following(MOA):
         image = self.bridge.compressed_imgmsg_to_cv2(msg)
         undistorted_image = cv2.undistort(image, self.camera_matrix, self.distortion_coeffs)
         undistorted_image = cv2.GaussianBlur(undistorted_image, (5, 5), 0)
+
         
         # Crop the image (e.g., lower half of 640x480 image)
         height, width = undistorted_image.shape[:2]
@@ -109,6 +127,8 @@ class Lane_Following(MOA):
         crop_left = 0           # Start from the left edge
         crop_right = width      # Go to the right edge (640)
         cropped_image = undistorted_image[crop_top:crop_bottom, crop_left:crop_right]
+
+
         # Detect lanes and mark centers on the cropped image
         yellow_pos, white_pos, processed_image = self.detect_lanes(cropped_image)
         
@@ -148,7 +168,7 @@ class Lane_Following(MOA):
     def detect_lanes(self, image):
         # Convert the image to HSV color space
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        hsv_image = cv2.GaussianBlur(hsv_image, (5, 5), 0)
+        # hsv_image = cv2.GaussianBlur(hsv_image, (5, 5), 0)
         
         yellow_center = None
         white_center = None
@@ -196,10 +216,10 @@ class Lane_Following(MOA):
                     cv2.circle(image, white_center, 5, (255, 255, 255), -1)  # White marker
                     break  # Use the first valid white contour
                 else:
-                    white_pos = yellow_pos -1000   # Assume a fixed offset if white lane is to the left of yellow lane 
+                    white_pos = yellow_pos + 300   # Assume a fixed offset if white lane is to the left of yellow lane 
 
         if yellow_center is not None and white_pos is None:
-            white_pos = yellow_pos -500
+            white_pos = yellow_pos +300 # Assume a fixed offset if white lane is not detected
         # Calculate and draw the lane center if both lane centers are detected
         if yellow_center is not None and white_center is not None:
             lane_center_x = (yellow_center[0] + white_center[0]) // 2
@@ -250,20 +270,19 @@ class Lane_Following(MOA):
         self._right_distance_traveled += distance
     
     def stop(self,time = 2):
-        for i in range(5):
-            rospy.loginfo("Stopping vehicle...")
-            msg = Twist2DStamped(v=0.0, omega=0.0)
-            self.pub_cmd.publish(msg)
+        rospy.loginfo("Stopping vehicle...")
+        msg = Twist2DStamped(v=0.0, omega=0.0)
+        self.pub_cmd.publish(msg)
         rospy.sleep(time)
 
 
     def pid_control(self, error):
         now = rospy.get_time()
         dt  = max(now - self.prev_time, 1e-3)
-        self.error_window.append(error)
-        smooth_error = sum(self.error_window) / len(self.error_window)
+        # self.error_window.append(error)
+        # smooth_error = sum(self.error_window) / len(self.error_window)
         # P
-        P = self.KP * smooth_error
+        P = self.KP * error
 
         # if self.counter == 0:
         #     self.prev_integral = error * dt
@@ -278,17 +297,17 @@ class Lane_Following(MOA):
         I = self.KI * self.integral
 
         # D with low‐pass filter
-        rawD = (smooth_error - self.prev_error) / dt
+        rawD = (error - self.prev_error) / dt
         self.deriv = 0.8*self.deriv + 0.2*rawD
         D = self.KD * self.deriv
 
         omega = P + I + D
         omega = max(min(omega, self.OMEGA_SPEED), -self.OMEGA_SPEED)
-
+        # print(self.VELOCITY, omega)
         cmd = Twist2DStamped(v=self.VELOCITY, omega=omega)
         self.pub_cmd.publish(cmd)
 
-        self.prev_error = smooth_error
+        self.prev_error = error
         self.prev_time  = now
 
     def lane_follow(self, distance,rate=30):
@@ -324,10 +343,11 @@ class Lane_Following(MOA):
             image_center = 320  # Assuming 640x480 image
             # print(lane_center)
             real_error = lane_center - image_center
-            self.pid_control(real_error)
+            self.pid_control(-real_error)
         else:
             # If lanes not detected, go straight slowly
-            cmd = Twist2DStamped(v=self.VELOCITY*1.5 , omega=self.OMEGA_SPEED*1.5)
+            cmd = Twist2DStamped(v=self.VELOCITY*0.7 , omega=self.OMEGA_SPEED*1.3)
+            # rospy.logwarn("Lanes not detected, larg turn")
             self.pub_cmd.publish(cmd)
             # rospy.logwarn("Lanes not detected, moving straight slowly")
             
@@ -353,29 +373,178 @@ class Lane_Following(MOA):
 
     def turn_right_90_degree_arc(self):
         rospy.loginfo("Turning right 90 degrees...")
-        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=-self.angular_vel*2)
+        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=-self.angular_vel*1.7)
         # for i in range(3):
         self.pub_cmd.publish(cmd)
         rospy.sleep(1)
     def turn_left_90_degree_arc(self):
         rospy.loginfo("Turning left 90 degrees...")
-        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=self.angular_vel*0.75)
+        cmd = Twist2DStamped(v=self.VELOCITY*2.2, omega=self.angular_vel*0.7)
         # for i in range(3):
         self.pub_cmd.publish(cmd)
-        rospy.sleep(2)
+        rospy.sleep(1.5)
+        return True
     def go_straight_for_half_meters(self, time=1.5,speed_multiplier=2):
         rospy.loginfo("Going straight for 0.5 meters...")
         cmd = Twist2DStamped(v=self.VELOCITY*speed_multiplier, omega=0)
         # for i in range(3):
         self.pub_cmd.publish(cmd)
-        rospy.sleep(1.5)
+        rospy.sleep(time)
     def send_cmd(self, v, omega, time=0):
         msg = Twist2DStamped(v=v, omega=omega)
         self.pub_cmd.publish(msg)
         rospy.sleep(time)
-    # def stop_with_cond(self, condition:bool, time):
-    #     if condition:
-    #         self.stop()
-    #         rospy.loginfo(f"stop for {time} sec")
-    #         rospy.sleep(time)
+
+    def turn_left(self, angle_rad, speed,):
+        # wait until we have initial tick values
+        while self.last_left_ticks is None or self.last_right_ticks is None:
+            rospy.sleep(0.01)
+
+        init_l = self.last_left_ticks
+        init_r = self.last_right_ticks
+        rate = rospy.Rate(10)
+
+        # Command: in-place rotate (v=0), positive omega = CCW/left turn
+        cmd = Twist2DStamped(v=0.0, omega=abs(speed))
+
+        while not rospy.is_shutdown():
+            # how many ticks have we moved
+            dlt_l = self.last_left_ticks - init_l
+            dlt_r = self.last_right_ticks - init_r
+
+            # ticks → meters: ΔX = 2πR · (Δticks / 135)
+            dist_l = 2*math.pi*self.WHEEL_RADIUS * (dlt_l/135.0)
+            dist_r = 2*math.pi*self.WHEEL_RADIUS * (dlt_r/135.0)
+
+            # current rotation (rad) = (d_right – d_left) / baseline
+            turned = abs((dist_r - dist_l) / self.BASELINE)
+
+            if turned >= angle_rad:
+                self.stop()
+                break
+
+            self.pub_cmd.publish(cmd)
+            rate.sleep()
+
+        # stop motors
+        self.pub_cmd.publish(Twist2DStamped(v=0.0, omega=0.0))
+        rospy.loginfo("Completed 45° left turn")
+
+    def turn_right(self, angle_rad, speed):
+        # wait until we have initial tick values
+        while self.last_left_ticks is None or self.last_right_ticks is None:
+            rospy.sleep(0.01)
+
+        init_l = self.last_left_ticks
+        init_r = self.last_right_ticks
+        rate = rospy.Rate(10)
+
+        # Command: in-place rotate (v=0), positive omega = CCW/left turn
+        cmd = Twist2DStamped(v=0.0, omega=-abs(speed))
+
+        while not rospy.is_shutdown():
+            # how many ticks have we moved
+            dlt_l = self.last_left_ticks - init_l
+            dlt_r = self.last_right_ticks - init_r
+
+            # ticks → meters: ΔX = 2πR · (Δticks / 135)
+            dist_l = 2*math.pi*self.WHEEL_RADIUS * (dlt_l/135.0)
+            dist_r = 2*math.pi*self.WHEEL_RADIUS * (dlt_r/135.0)
+
+            # current rotation (rad) = (d_right – d_left) / baseline
+            turned = abs((dist_l - dist_r) / self.BASELINE)
+
+            if turned >= angle_rad:
+                self.stop()
+                break
+
+            self.pub_cmd.publish(cmd)
+            rate.sleep()
+
+        # stop motors
+        self.pub_cmd.publish(Twist2DStamped(v=0.0, omega=0.0))
+        rospy.loginfo("Completed 45° left turn")
+
+    def go_straight(self, distance_m, speed_mps,time_to_stop=0.01):
+        """
+        Drive straight forward for `distance_m` meters at `speed_mps` (m/s),
+        using the average of left and right encoder readings.
+        """
+        # wait for encoder readings to initialize
+        while self.last_left_ticks is None or self.last_right_ticks is None and not rospy.is_shutdown():
+            rospy.sleep(0.01)
+
+        init_l = self.last_left_ticks
+        init_r = self.last_right_ticks
+        # init_r = self.last_right_ticks
+        rate = rospy.Rate(10)  # 10 Hz
+
+        cmd = Twist2DStamped(v=speed_mps, omega=0.0)
+
+        while not rospy.is_shutdown():
+            # compute tick deltas
+            dlt_l = self.last_left_ticks - init_l
+            dlt_r = self.last_right_ticks - init_r
+
+            # convert ticks → meters (Duckiebot: 135 ticks/rev)
+            dist_l = 2 * math.pi * self.WHEEL_RADIUS * (dlt_l / 135.0)
+            dist_r = 2 * math.pi * self.WHEEL_RADIUS * (dlt_r / 135.0)
+
+            # take the average of the two wheels
+            traveled = 0.5 * (dist_l + dist_r)
+
+            if traveled >= distance_m:
+                if time_to_stop!=0: self.stop(time_to_stop)
+                break
+
+            # publish forward command
+            self.pub_cmd.publish(cmd)
+            rate.sleep()
+
+        # stop the robot
+        self.pub_cmd.publish(Twist2DStamped(v=0.0, omega=0.0))
+        rospy.loginfo(f"Traveled {traveled:.3f} m (target: {distance_m} m)")
+
+    def Bot_following(self, hz=10, duckiebot_distance=None):
+        """
+        Loop at `hz` Hz, steering to center the front bot and adjusting speed
+        to maintain a set following distance.
+        """
+        rate = rospy.Rate(hz)
+
+        image_center = 320  # Assuming 640x480 image
+        # print(lane_center)
+        real_error = self.pos_x - image_center
+        self.pid_control(-real_error)
+
+        # # controller gains and limits
+        # Kp_steer = 2.0          # how aggressively to turn toward the target
+        # Kp_dist  = 0.5          # how aggressively to close/open distance
+        # desired_dist = 0.5      # meters you want to stay behind front bot
+        # max_speed   = 0.3       # m/s
+        # max_omega   = 1.0       # rad/s
+
+        # # if we have a valid detection & distance
+        
+        # # lateral error: normalized [-1..+1], + means front bot is to your right
+        # err_x = self.pos_x
+        # print(self.pos_x, self.pos_y)
+
+        # # longitudinal error: positive means you're too far back
+        # err_d = duckiebot_distance - desired_dist
+
+        # # control laws
+        # omega = -Kp_steer * err_x
+        # v     =  Kp_dist  * err_d
+
+        # # saturate
+        # omega = max(-max_omega, min(max_omega, omega))
+        # v     = max(0.0,       min(max_speed, v))
+
+
+        # # publish the drive command
+        # cmd = Twist2DStamped(v=v, omega=omega)
+        # self.pub_cmd.publish(cmd)
+        return real_error
+        rate.sleep()
             

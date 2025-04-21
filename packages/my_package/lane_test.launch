@@ -1,0 +1,10 @@
+<launch>
+  <!-- Load all params under /lane_following_node/... -->
+  <rosparam file="$(find my_package)config/lane_controller.yaml" command="load"/>
+
+  <!-- Then start the node -->
+  <node pkg="my_package"
+        type="lane_following_2.py"
+        name="lane_following_node"
+        output="screen" />
+</launch>
