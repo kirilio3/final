@@ -6,6 +6,7 @@ import rospy
 from duckietown.dtros import DTROS, NodeType
 from std_msgs.msg import ColorRGBA, Float64, Int64
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, LEDPattern
+
 from sensor_msgs.msg import CompressedImage, CameraInfo
 import signal
 import sys
@@ -31,6 +32,16 @@ class Stage2():
 
         self.ID1 = ID1
         self.ID2 = ID2
+
+
+
+        self.led_colors = {
+            'red': ColorRGBA(r=0.0, g=0.0, b=1.0, a=1.0),
+            # 'red': ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0),
+            'green': ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)
+        }
+        self.num_leds = 5  # Duckiebot typically has 5 LEDs
+
         ##############following functiinalities are added#####################
         self.LF = lf.Lane_Following(self.vehicle_name)
         # self.DC = dc.Detect_Corss(self.vehicle_name, None,None, debugger=False)
@@ -45,6 +56,8 @@ class Stage2():
         self.line_type_pub = rospy.Publisher(f"/{self.vehicle_name}/line_type", Float64, queue_size=10)
         self.tag_id= None
         self.apriltag_type_pub = rospy.Publisher(f"/{self.vehicle_name}/apriltag_type", Int64, queue_size=10)
+        self.led_pub = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
+        self.send_of_sig_pub = rospy.Publisher(f"/{self.vehicle_name}/send_of_sig", Int64, queue_size=1)
         # self.sign_change_pub = rospy.Publisher(f"/{self.vehicle_name}/sign_change", Int64, queue_size=10)
         # Subscribers
         self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
@@ -67,6 +80,9 @@ class Stage2():
         self.red = 1
         self.cross = 0
         self.line_reached = 0
+        
+
+        self.set_led_color("green")
     '''
         please set camera info here for every camera related node 
     '''
@@ -96,28 +112,41 @@ class Stage2():
     
 
     def run_stage1(self):
+        # self.set_led_color("RED")
+        stage = "bot"
+        error = 0
         self.apriltag_type_pub.publish(Int64(1))
         while not rospy.is_shutdown():
-            while self.duckiebot_distance !=-1 and self.duckiebot_distance <= 0.3:
-                print(self.duckiebot_distance)
-                self.LF.stop(time=0.01)
+            while self.duckiebot_distance !=-1 and self.duckiebot_distance <= 0.25:
+                self.LF.stop(time=0.5)
+                if self.duckiebot_distance>0.25:
+                    break
             while self.duckiebot_distance != -1 and self.duckiebot_distance > 0.25 and self.duckiebot_distance<=0.5:
+                if stage != "bot":
+                    # self.set_led_color("red")
+                    stage = "bot"
                 error= self.LF.Bot_following(20,self.duckiebot_distance)
+                # print(error)
                 if self.line_reached :
                     print(self.counter)
                     self.counter+=1
                     rospy.loginfo("Red cross line detected")
                     # rospy.sleep(0.3)
                     self.LF.stop()
-                    if error > 320:
+                    print(error)
+                    if error < 320 and abs(320-error) >100:
                         self.LF.turn_left_90_degree_arc()
-                    else:
+                    elif error > 320 and abs(320-error) >100:
                         self.LF.turn_right_90_degree_arc()
+
                     if self.counter >=3: 
                         break
                 # print(self.duckiebot_distance)
                 
             if self.duckiebot_distance == -1:
+                if stage != "lane":
+                    # self.set_led_color("green")
+                    stage = "lane"
                 self.LF.lane_follow(10, 20)
                 if self.line_reached :
                     print(self.counter)
@@ -125,9 +154,14 @@ class Stage2():
                     rospy.loginfo("Red cross line detected")
                     # rospy.sleep(0.3)
                     self.LF.stop()
-                    self.LF.go_straight(0.2,0.25,time_to_stop=0)
+                    print(error)
+                    if error < 320 and abs(320-error) >100:
+                        self.LF.turn_left_90_degree_arc()
+                    elif error > 320 and abs(320-error) >100:
+                        self.LF.turn_right_90_degree_arc()
                     if self.counter >=3: 
                         break
+
 
     def run_stage2(self):
         self.apriltag_type_pub.publish(Int64(0))
@@ -159,16 +193,17 @@ class Stage2():
                 elif tagID == self.ID2:
                     rospy.loginfo(f"Tag ID {tagID} detected")
                     self.LF.stop(1)
-                    self.LF.go_straight(0.3,0.25,time_to_stop=0)
-                    self.LF.turn_right(1.57079633,4)
-                    self.LF.go_straight(0.1,0.25,time_to_stop=0)
+                    # self.LF.go_straight(0.3,0.25,time_to_stop=0)
+                    # self.LF.turn_right(1.57079633,4)
+                    # self.LF.go_straight(0.1,0.25,time_to_stop=0)
+                    self.LF.turn_right_90_degree_arc()
                     print("after")
                     self.LF.stop()
                     break
 
     def run_stage3(self):
         # self.DC.cross_or_red_setter("cross")
-        self.apriltag_type_pub.publish(Int64(1))
+        self.apriltag_type_pub.publish(Int64(0))
         self.line_type_pub.publish(Float64(self.cross))
         rospy.sleep(1)
         rate = 10
@@ -177,39 +212,48 @@ class Stage2():
             while not rospy.is_shutdown(): 
                 self.LF.lane_follow(20,rate)
                 # print(self.duckiebot_distance)
-                if self.duckiebot_distance != -1 and self.duckiebot_distance <= 0.25:
-                    self.LF.stop()
-                    rospy.loginfo("Duckiebot detected")
-                    self.LF.turn_left(0.785398163, 4)
-                    self.LF.go_straight(0.38,0.25)
-                    self.LF.turn_right(1.04719755, 4)
-                    # counter = 0
-                    # flag = True
-                    # self.sign_change_pub.publish(Int64(-1))
-                    # self.duckiebot_distance_sub.unregister()
-                    # self.duckiebot_distance = None
-                    # self.LF.send_cmd(v=0.25, omega=5,time=0.5)
-                    # self.LF.go_straight_for_half_meters(time=0.5,speed_multiplier=1.5)
-                    # self.LF.stop()
-                    # self.LF.send_cmd(v=0.2, omega=-3.5,time=0.5)
-                    self.apriltag_type_pub.publish(Int64(0))
-                    self.duckiebot_distance = -1
-                    rospy.sleep(1)
-                # if counter>30 and flag:
-                #     self.sign_change_pub.publish(Int64(1))
-                if self.cross_walk_number < 2:
+                # if self.duckiebot_distance != -1 and self.duckiebot_distance <= 0.25:
+                #     self.LF.stop()
+                #     rospy.loginfo("Duckiebot detected")
+                #     self.LF.turn_left(0.785398163, 4)
+                #     self.LF.go_straight(0.38,0.25)
+                #     self.LF.turn_right(1.04719755, 4)
+                #     # counter = 0
+                #     # flag = True
+                #     # self.sign_change_pub.publish(Int64(-1))
+                #     # self.duckiebot_distance_sub.unregister()
+                #     # self.duckiebot_distance = None
+                #     # self.LF.send_cmd(v=0.25, omega=5,time=0.5)
+                #     # self.LF.go_straight_for_half_meters(time=0.5,speed_multiplier=1.5)
+                #     # self.LF.stop()
+                #     # self.LF.send_cmd(v=0.2, omega=-3.5,time=0.5)
+                #     self.apriltag_type_pub.publish(Int64(0))
+                #     self.duckiebot_distance = -1
+                #     rospy.sleep(1)
+
+
+                if self.cross_walk_number < 3:
                     cross_line_detected = self.cross_line_detect
                     # rospy.loginfo(f"cross line detected: {cross_line_detected}")
                     if cross_line_detected:
-                        self.cross_walk_number+=1
-                        # rospy.loginfo("cross line detected")
-                        self.LF.stop()
-                        rospy.sleep(1)
-                        ped_detected = self.ped
-                        while ped_detected:
+                        
+                        if self.cross_walk_number !=1:
+                            # rospy.loginfo("cross line detected")
+                            self.LF.stop()
+                            rospy.sleep(1)
                             ped_detected = self.ped
-                        # s
-                        self.LF.go_straight(0.4,0.25,time_to_stop=0)
+                            while ped_detected:
+                                ped_detected = self.ped
+                            # s
+                            self.LF.go_straight(0.4,0.25,time_to_stop=0)
+                        else:
+                            self.LF.stop()
+                            rospy.loginfo("Duckiebot detected")
+                            self.LF.turn_left(0.785398163, 4)
+                            self.LF.go_straight(0.38,0.25)
+                            self.LF.turn_right(0.785398163, 4)
+                        self.cross_walk_number+=1
+
                 else:
                     # self.DC.cross_or_red_setter(cross_or_red="red")
                     self.line_type_pub.publish(Float64(self.red))
@@ -220,7 +264,35 @@ class Stage2():
                         # rospy.loginfo("Red cross line detected")
                         end = False
                         break
+        self.send_of_sig_pub.publish(Int64(1))
 
 
+    # def set_led_color(self, color):
+    #     pattern = LEDPattern()
+    #     colors = {
+    #         'GREEN': ColorRGBA(0, 1, 0, 1),
+    #         'RED': ColorRGBA(1, 0, 0, 1),
+    #         'CYAN': ColorRGBA(0, 1, 1, 1),
+    #         'WHITE': ColorRGBA(1, 1, 1, 1),
+    #         'BLUE': ColorRGBA(0, 0, 1, 1),
+    #     }
+    #     selected_color = colors.get(color, ColorRGBA(0.5, 0, 0.5, 1))
+    #     pattern.color_list = [color] * 5
+    #     pattern.rgb_vals = [selected_color] * 5
+    #     pattern.color_mask = [1] * 5
+    #     pattern.frequency = 1.0
+    #     pattern.frequency_mask = [1] * 5
+    #     print("published")
+    #     self.led_pub.publish(pattern)
 
+    def set_led_color(self, color_name):
+        """Set all LEDs to the specified color."""
+        if color_name not in self.led_colors:
+            rospy.logwarn(f"Unknown color: {color_name}")
+            return
+
+        led_msg = LEDPattern()
+        color = self.led_colors[color_name]
+        led_msg.rgb_vals = [color] * self.num_leds
+        self.led_pub.publish(led_msg)
 

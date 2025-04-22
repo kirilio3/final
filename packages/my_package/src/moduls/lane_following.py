@@ -53,6 +53,12 @@ class Lane_Following(MOA):
         # sef.KP = 0.012
         self.KI = 0.001
         self.KD = 0.0001
+
+        self.KPB = 0.010
+        # sef.KP = 0.012
+        self.KIB = 0.001
+        self.KDB = 0.0001
+
         self.TARGET_DISTANCE = 20  # meters
 
         self.deriv = 0.0
@@ -276,39 +282,73 @@ class Lane_Following(MOA):
         rospy.sleep(time)
 
 
-    def pid_control(self, error):
-        now = rospy.get_time()
-        dt  = max(now - self.prev_time, 1e-3)
-        # self.error_window.append(error)
-        # smooth_error = sum(self.error_window) / len(self.error_window)
-        # P
-        P = self.KP * error
+    def pid_control(self, error,speed = 0.25,type = "normal"):
+        if type == "normal":
+            now = rospy.get_time()
+            dt  = max(now - self.prev_time, 1e-3)
+            # self.error_window.append(error)
+            # smooth_error = sum(self.error_window) / len(self.error_window)
+            # P
+            P = self.KP * error
 
-        # if self.counter == 0:
-        #     self.prev_integral = error * dt
-        # if self.counter == 20:
-        #     self.counter = 0
-        #     self.integral -=self.prev_integral
-        # self.counter+=1
-        
-        # I with anti‐windup
-        self.integral += error * dt
-        self.integral = max(min(self.integral, 1.0), -1.0)
-        I = self.KI * self.integral
+            # if self.counter == 0:
+            #     self.prev_integral = error * dt
+            # if self.counter == 20:
+            #     self.counter = 0
+            #     self.integral -=self.prev_integral
+            # self.counter+=1
+            
+            # I with anti‐windup
+            self.integral += error * dt
+            self.integral = max(min(self.integral, 1.0), -1.0)
+            I = self.KI * self.integral
 
-        # D with low‐pass filter
-        rawD = (error - self.prev_error) / dt
-        self.deriv = 0.8*self.deriv + 0.2*rawD
-        D = self.KD * self.deriv
+            # D with low‐pass filter
+            rawD = (error - self.prev_error) / dt
+            self.deriv = 0.8*self.deriv + 0.2*rawD
+            D = self.KD * self.deriv
 
-        omega = P + I + D
-        omega = max(min(omega, self.OMEGA_SPEED), -self.OMEGA_SPEED)
-        # print(self.VELOCITY, omega)
-        cmd = Twist2DStamped(v=self.VELOCITY, omega=omega)
-        self.pub_cmd.publish(cmd)
+            omega = P + I + D
+            omega = max(min(omega, self.OMEGA_SPEED), -self.OMEGA_SPEED)
+            # print(self.VELOCITY, omega)
+            cmd = Twist2DStamped(v=speed, omega=omega)
+            self.pub_cmd.publish(cmd)
 
-        self.prev_error = error
-        self.prev_time  = now
+            self.prev_error = error
+            self.prev_time  = now
+        else:
+            now = rospy.get_time()
+            dt  = max(now - self.prev_time, 1e-3)
+            # self.error_window.append(error)
+            # smooth_error = sum(self.error_window) / len(self.error_window)
+            # P
+            P = self.KPB * error
+
+            # if self.counter == 0:
+            #     self.prev_integral = error * dt
+            # if self.counter == 20:
+            #     self.counter = 0
+            #     self.integral -=self.prev_integral
+            # self.counter+=1
+            
+            # I with anti‐windup
+            self.integral += error * dt
+            self.integral = max(min(self.integral, 1.0), -1.0)
+            I = self.KIB * self.integral
+
+            # D with low‐pass filter
+            rawD = (error - self.prev_error) / dt
+            self.deriv = 0.8*self.deriv + 0.2*rawD
+            D = self.KDB * self.deriv
+
+            omega = P + I + D
+            omega = max(min(omega, self.OMEGA_SPEED), -self.OMEGA_SPEED)
+            # print(self.VELOCITY, omega)
+            cmd = Twist2DStamped(v=speed, omega=omega)
+            self.pub_cmd.publish(cmd)
+
+            self.prev_error = error
+            self.prev_time  = now
 
     def lane_follow(self, distance,rate=30):
         # while (True):
@@ -373,7 +413,7 @@ class Lane_Following(MOA):
 
     def turn_right_90_degree_arc(self):
         rospy.loginfo("Turning right 90 degrees...")
-        cmd = Twist2DStamped(v=self.VELOCITY*2, omega=-self.angular_vel*1.7)
+        cmd = Twist2DStamped(v=self.VELOCITY*1.8, omega=-self.angular_vel*1.7)
         # for i in range(3):
         self.pub_cmd.publish(cmd)
         rospy.sleep(1)
@@ -511,11 +551,14 @@ class Lane_Following(MOA):
         to maintain a set following distance.
         """
         rate = rospy.Rate(hz)
-
+        speed = 0.2
         image_center = 320  # Assuming 640x480 image
         # print(lane_center)
-        real_error = self.pos_x - image_center
-        self.pid_control(-real_error)
+        if self.pos_x is not  None:
+            real_error = self.pos_x - image_center
+        else:
+            real_error = 0
+        self.pid_control(-real_error,speed=speed, type="bot_following")
 
         # # controller gains and limits
         # Kp_steer = 2.0          # how aggressively to turn toward the target
@@ -545,6 +588,6 @@ class Lane_Following(MOA):
         # # publish the drive command
         # cmd = Twist2DStamped(v=v, omega=omega)
         # self.pub_cmd.publish(cmd)
-        return real_error
         rate.sleep()
+        return self.pos_x
             

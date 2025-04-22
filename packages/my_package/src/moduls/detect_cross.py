@@ -319,7 +319,7 @@ class DetectCorss(MOA):
 
                 if pixel_height > 0:
                     distance = abs((real_height_meters * focal_length) / pixel_height)
-                    if distance < 0.15:  # Stop if red line is close (adjust threshold as needed)
+                    if distance < 0.13:  # Stop if red line is close (adjust threshold as needed)
                         self.red_line_reached = True
                         self.red_cross_line_detect_pub.publish(Float64(1))
                         # rospy.loginfo("Red line detected, stopping the robot.")

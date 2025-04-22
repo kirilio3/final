@@ -4,7 +4,7 @@ import os
 import math
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from std_msgs.msg import ColorRGBA, Float64
+from std_msgs.msg import ColorRGBA, Float64,Int64
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, LEDPattern
 from sensor_msgs.msg import CompressedImage, CameraInfo
 import signal
@@ -30,6 +30,7 @@ class Camara_node(DTROS):
         self.distortion_coeffs = None
         # self.DA = da(self.vehicle_name)
         self.DC = dc(self.vehicle_name, None,None, debugger=False
+                     
                      ,corss_or_red="red")
 
         ##############following stages are added#####################
@@ -47,7 +48,7 @@ class Camara_node(DTROS):
 
         # # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
         self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
-
+        self.signal_sub = rospy.Subscriber(f"/{self.vehicle_name}/send_of_sig", Int64, self.signal_cb)
 
 
     def cb_camera_info(self, msg):
@@ -56,7 +57,12 @@ class Camara_node(DTROS):
         self.DC.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
         # self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
     
-
+    def signal_cb(self, msg):
+        print(msg.data)
+        if msg.data == 1:
+            # print("signal received")
+            super(Camara_node, self).on_shutdown()
+            sys.exit(0)
 
 
     def run(self):

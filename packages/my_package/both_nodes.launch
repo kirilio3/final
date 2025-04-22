@@ -1,5 +1,9 @@
 <launch>
   <node pkg="my_package" type="detect_apriltag_node.py"        name="DA"        output="screen"/>
   <node pkg="my_package" type="camara_node.py" name="camara_node"  output="screen" />
-  <node pkg="my_package" type="main.py"        name="main"         output="screen"/>
+  <node pkg="my_package" type="main.py"        name="main"         output="screen"> 
+    <param name="tagNumber" value="$(arg tagNumber)"/>
+  </node>
+
+
 </launch>

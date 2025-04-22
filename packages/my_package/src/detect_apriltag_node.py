@@ -4,7 +4,7 @@ import os
 import math
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from std_msgs.msg import ColorRGBA, Float64
+from std_msgs.msg import ColorRGBA, Float64,Int64
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, LEDPattern
 from sensor_msgs.msg import CompressedImage, CameraInfo
 import signal
@@ -46,6 +46,8 @@ class DetectApriltagNode(DTROS):
 
         # # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
         self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
+        self.signal_sub = rospy.Subscriber(f"/{self.vehicle_name}/send_of_sig", Int64, self.signal_cb)
+        self.sig = 0
 
 
 
@@ -54,8 +56,11 @@ class DetectApriltagNode(DTROS):
         self.distortion_coeffs = np.array(msg.D)
         self.DA.camera_info_setter(camera_matrix=self.camera_matrix, distortion_coeffs=self.distortion_coeffs)
     
-
-
+    def signal_cb(self, msg):
+        print("signal received")
+        if msg.data == 1:
+            super(DetectApriltagNode, self).on_shutdown()
+            sys.exit(0)
 
     def run(self):
         rospy.spin()

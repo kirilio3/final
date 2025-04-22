@@ -4,7 +4,7 @@ import os
 import math
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from std_msgs.msg import ColorRGBA, Float64
+from std_msgs.msg import ColorRGBA, Float64,Int64
 from duckietown_msgs.msg import Twist2DStamped, WheelEncoderStamped, LEDPattern
 from sensor_msgs.msg import CompressedImage, CameraInfo
 import signal
@@ -12,6 +12,7 @@ import sys
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
+from stage4 import LaneFollowNode 
 
 import stage2 as Stage2
 import time
@@ -21,7 +22,7 @@ class main(DTROS):
     def __init__(self, node_name):
         super(main, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
-
+        self.tag_number = rospy.get_param('~tagNumber')
         
         self.bridge = CvBridge()
         self.camera_matrix = None
@@ -40,7 +41,7 @@ class main(DTROS):
 
         # self.camera_topic = f"/{self.vehicle_name}/camera_node/image/compressed"
         # self.camera_info_topic = f"/{self.vehicle_name}/camera_node/camera_info"
-
+        self.send_of_sig_pub = rospy.Publisher(f"/{self.vehicle_name}/send_of_sig", Int64, queue_size=1)
         # # self.sub_camera = rospy.Subscriber(self.camera_topic, CompressedImage, self.cb_camera)
         # self.sub_camera_info = rospy.Subscriber(self.camera_info_topic, CameraInfo, self.cb_camera_info)
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -59,12 +60,21 @@ class main(DTROS):
     def run(self):
         rate = 20
         #rospy.spin()
-        rospy.sleep(1)
-        self.stage2.run_stage1()
+        # rospy.sleep(1)
+        # self.stage2.run_stage1()
         # self.stage2.run_stage2()
         # rospy.loginfo("Stage 2 completed, now running Stage 3...")
         # rospy.sleep(1)
         # self.stage2.run_stage3()
+        i = 1
+        self.send_of_sig_pub.publish(Int64(1))
+        while i<1000:
+            i+=1
+        print(f"Stage 2 completed, now running Stage 4...{self.tag_number}")
+        
+        # stage4 = LaneFollowNode.part4run(int(self.tag_number),name=self.vehicle_name)
+
+        
 
     def on_shutdown(self):
         self.stage2.stop()

@@ -96,8 +96,7 @@ class DetectApriltag(MOA):
 
             pts = centers.squeeze()           # shape (N,2)
             cx, cy = pts.mean(axis=0).astype(int)
-            h, w = image_cv.shape[:2]
-            dx = cx - w//2;  dy = cy - h//2
+ 
             self.duckiebot_pos_x_pub.publish(Float64(cx))
             self.duckiebot_pos_y_pub.publish(Float64(cy))
 
